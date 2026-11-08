@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GarmentKind, RailGarment } from '../components/ui/product-rail-gallery'
 import { formatPrice } from '../config/brand'
 import { thumbUrl } from '../ui/img'
+import { whenIdle } from './idle'
 
 /**
  * Les produits textiles de l'espace pro, présentés sur le portant (Product Rail Gallery).
@@ -39,6 +40,14 @@ function load(url: string) {
 /** Recadre une photo détourée sur la toile du portant ; null si la photo a un fond (pas détourée). */
 async function normalizeCutout(url: string): Promise<string | null> {
   const img = await load(thumbUrl(url, 900))
+  // analyse des pixels au premier moment de calme : jamais pendant le défilement
+  const out = await whenIdle(() => cropCutout(img))
+  if (!out) return null
+  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/webp', 0.9))
+  return blob ? URL.createObjectURL(blob) : null
+}
+
+function cropCutout(img: HTMLImageElement): HTMLCanvasElement | null {
   const c = document.createElement('canvas')
   c.width = img.naturalWidth
   c.height = img.naturalHeight
@@ -71,8 +80,7 @@ async function normalizeCutout(url: string): Promise<string | null> {
   const o = out.getContext('2d')!
   o.imageSmoothingQuality = 'high'
   o.drawImage(c, x0, y0, cw, ch, (W - cw * s) / 2, top, cw * s, ch * s)
-  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/webp', 0.9))
-  return blob ? URL.createObjectURL(blob) : null
+  return out
 }
 
 function railPhoto(url: string | undefined) {

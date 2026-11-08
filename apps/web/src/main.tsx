@@ -9,10 +9,11 @@ import './styles/index.css'
 import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { boot } from './lib/loading'
 import { useApp } from './lib/store'
 
-// Accès à l'état depuis la console en développement (diagnostic qualité 3D, etc.)
-if (import.meta.env.DEV) Object.assign(window, { __app: useApp })
+// Accès à l'état depuis la console en développement, ou en ligne avec ?perf (mesures de fluidité)
+if (import.meta.env.DEV || new URLSearchParams(location.search).has('perf')) Object.assign(window, { __app: useApp, __boot: boot })
 
 /* Une seule application, un seul domaine : chaque espace est chargé à la demande. */
 const AdminApp = lazy(() => import('./admin/AdminApp'))

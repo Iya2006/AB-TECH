@@ -3,11 +3,12 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Bloom, EffectComposer, N8AO, ToneMapping, Vignette } from '@react-three/postprocessing'
 import { easing } from 'maath'
 import { ToneMappingMode } from 'postprocessing'
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { CAMERA_KEYS } from '../journey/chapters'
 import type { Quality } from '../lib/device'
-import { loading } from '../lib/loading'
+import { whenIdle } from '../lib/idle'
+import { boot, loading } from '../lib/loading'
 import { journey } from '../lib/scroll'
 import { useApp, type Mood } from '../lib/store'
 import { outsideHdri, preloadFirstView, preloadRest } from './assets'
@@ -15,6 +16,7 @@ import { buildInteriorEnvironment } from './interiorEnv'
 import { CreationStation, EvenementielStation, ImpressionStation, ObjetsStation, TextileStation } from './stations/Atelier'
 import { InformatiqueStation, SecuriteStation } from './stations/TechStations'
 import { TextureWarmup } from './textureQueue'
+import { useWarm, Warm, WarmRoot } from './Warm'
 import { Exterior } from './world/Exterior'
 import { Hall } from './world/Hall'
 import { Reception } from './world/Reception'
@@ -25,6 +27,12 @@ THREE.DefaultLoadingManager.onProgress = (_, loaded, total) => {
 }
 // dès le téléchargement de ce module (lancé à l'ouverture de la page) : la façade d'abord
 preloadFirstView(useApp.getState().mood)
+
+/**
+ * Délai après la fin du chargement (ms) pendant lequel rien de lourd ne démarre : l'écran de chargement
+ * s'ouvre sur la façade (1 s environ) et ne doit pas hoqueter.
+ */
+const AFTER_INTRO = 1300
 
 /* ------------------------------------------------------------------ */
 /* Caméra pilotée par le scroll                                        */
@@ -140,20 +148,25 @@ const AMBIENCE: Record<Mood, Record<Zone, Ambience>> = {
  */
 function EnvironmentSwitch({ zone }: { zone: Zone }) {
   const mood = useApp((s) => s.mood)
-  const outside = useEnvironment({ files: outsideHdri(mood) })
+  const hdri = useEnvironment({ files: outsideHdri(mood) })
   const scene = useThree((s) => s.scene)
   const gl = useThree((s) => s.gl)
-  const [interior, setInterior] = useState<THREE.Texture | null>(null)
+  // Les deux reflets sont préparés ici, chacun d'un bloc, pendant le démarrage (l'écran de chargement attend
+  // la fin de ces étapes pour animer son verre). Sinon Three.js prépare celui de la rue au premier dessin
+  // d'une matière, au beau milieu de la mise en place de la façade, et tout se fige en même temps.
+  const street = useMemo(() => {
+    const pmrem = new THREE.PMREMGenerator(gl)
+    const target = pmrem.fromEquirectangular(hdri)
+    pmrem.dispose()
+    return target
+  }, [gl, hdri])
+  useEffect(() => () => street.dispose(), [street])
+  const outside = street.texture
+  const interior = useMemo(() => buildInteriorEnvironment(gl), [gl])
+  useEffect(() => () => interior.dispose(), [interior])
 
   useEffect(() => {
-    // calcul différé : la façade est déjà affichée, le visiteur ne voit rien
-    const id = window.setTimeout(() => setInterior(buildInteriorEnvironment(gl)), 1200)
-    return () => window.clearTimeout(id)
-  }, [gl])
-  useEffect(() => () => interior?.dispose(), [interior])
-
-  useEffect(() => {
-    const inside = zone === 'inside' && interior
+    const inside = zone === 'inside'
     scene.environment = inside ? interior : outside
     scene.environmentIntensity = inside ? 0.85 : mood === 'day' ? 0.9 : 0.35
   }, [zone, interior, outside, mood, scene])
@@ -271,6 +284,59 @@ function Effects({ quality }: { quality: Quality }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Lumières                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les lumières ponctuelles de la visite : toujours dans la scène, toujours en même nombre. Three.js compile
+ * les shaders de chaque matière pour un nombre donné de lumières ; en masquer une (la façade, dès qu'on est entré)
+ * recompilait toutes les matières d'un coup et figeait l'image plus d'une seconde. Seule leur intensité change.
+ * Deux d'entre elles servent tour à tour aux réverbères de la rue (la nuit) puis à la boutique tech, au fond
+ * de l'atelier : les deux ne sont jamais visibles en même temps.
+ */
+const ROAMING = [
+  { street: [-7.5, 4.6, 10.8], shop: [-5.5, 3.6, -56] },
+  { street: [7.5, 4.6, 10.8], shop: [5, 3.6, -64] },
+] as const
+/** Avant ce point du parcours, la caméra est côté rue (réverbères) ; après, côté atelier (boutique tech). */
+const STREET_UNTIL = 0.3
+
+function RoamingLight({ street, shop }: (typeof ROAMING)[number]) {
+  const ref = useRef<THREE.PointLight>(null)
+  const place = useRef<'street' | 'shop' | null>(null)
+  useFrame((_, dt) => {
+    const light = ref.current
+    if (!light) return
+    const wanted = journey.progress < STREET_UNTIL ? 'street' : 'shop'
+    // elle ne change de place qu'une fois éteinte : on ne la voit jamais sauter
+    if (place.current !== wanted && light.intensity < 0.05) {
+      place.current = wanted
+      const [x, y, z] = wanted === 'street' ? street : shop
+      light.position.set(x, y, z)
+      light.color.set(wanted === 'street' ? '#ffd59a' : '#ffffff')
+      light.distance = wanted === 'street' ? 16 : 10
+    }
+    const lampOn = useApp.getState().mood === 'night' && journey.progress < 0.2
+    const target = place.current !== wanted ? 0 : wanted === 'shop' ? 6 : lampOn ? 40 : 0
+    light.intensity = THREE.MathUtils.damp(light.intensity, target, 4, dt)
+  })
+  return <pointLight ref={ref} intensity={0} decay={2} />
+}
+
+function LightRig() {
+  return (
+    <>
+      {/* façade (visible surtout la nuit), et l'atelier qui éclaire sa vitrine de l'intérieur */}
+      <pointLight position={[0, 3.4, 1.4]} intensity={6} distance={7} decay={2} color="#ffe6c4" />
+      <pointLight position={[0, 3.2, -3.5]} intensity={22} distance={14} decay={2} color="#f4f8ff" />
+      {ROAMING.map((spot, i) => (
+        <RoamingLight key={i} {...spot} />
+      ))}
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Monde                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -306,30 +372,14 @@ function Near({ z, ahead = 34, behind = 7, children }: { z: number; ahead?: numb
 }
 
 /**
- * Poste de l'intérieur, monté après la façade. Tant que la carte graphique compile ses matériaux (en tâche de fond,
- * sans figer l'image), il reste caché ; ensuite il n'est dessiné que lorsque la caméra en est proche.
+ * Poste de l'intérieur, monté après la façade, un à la fois. Il reste caché le temps que la carte graphique
+ * compile ses matières (en tâche de fond) et reçoive ses textures ; ensuite il n'est dessiné que lorsque
+ * la caméra en est proche.
  */
-function Station({ z, shadow, quality, children }: { z: number; shadow: [number, number, number, number]; quality: Quality; children: ReactNode }) {
+function Station({ z, shadow, quality, onWarm, children }: { z: number; shadow: [number, number, number, number]; quality: Quality; onWarm: () => void; children: ReactNode }) {
   const ref = useRef<THREE.Group>(null)
-  const gl = useThree((s) => s.gl)
-  const camera = useThree((s) => s.camera)
-  const scene = useThree((s) => s.scene)
-  const [warm, setWarm] = useState(false)
+  const { warm, scope, Provider } = useWarm(ref, onWarm)
   const frames = useRef(0)
-
-  useLayoutEffect(() => {
-    const group = ref.current
-    if (!group) return
-    let off = false
-    group.visible = true
-    gl.compileAsync(group, camera, scene)
-      .catch(() => {})
-      .finally(() => !off && setWarm(true))
-    group.visible = false
-    return () => {
-      off = true
-    }
-  }, [gl, camera, scene])
 
   useFrame(({ camera }) => {
     if (!ref.current) return
@@ -344,76 +394,158 @@ function Station({ z, shadow, quality, children }: { z: number; shadow: [number,
 
   const [x, sz, w, d] = shadow
   return (
-    <group ref={ref}>
-      {children}
-      {warm && quality !== 'low' && <ContactShadows position={[x, 0.006, sz]} scale={[w, d]} resolution={256} frames={1} far={1.6} blur={2.2} opacity={0.4} />}
+    <Provider value={scope}>
+      <group ref={ref} visible={false}>
+        {children}
+        {warm && quality !== 'low' && <ContactShadows position={[x, 0.006, sz]} scale={[w, d]} resolution={256} frames={1} far={1.6} blur={2.2} opacity={0.4} />}
+      </group>
+    </Provider>
+  )
+}
+
+// Compilation de la façade lancée : reflets et premières images sont faits (le plus lourd pour la carte
+// graphique), le verre de l'écran de chargement peut s'animer (il tourne à part, dans un worker).
+// Repères de temps (performance.mark, sans coût) : lus par les mesures de fluidité.
+const onFirstViewCompile = () => {
+  performance.mark('3d:facade-compile')
+  boot.set()
+}
+const onFirstViewWarm = () => void performance.mark('3d:facade-prete')
+
+/**
+ * La façade et l'entrée : seules attendues avant de lever le rideau. Une fois leurs modèles, leurs textures et
+ * l'éclairage de la rue chargés, elles restent cachées pendant que la carte graphique compile leurs matières
+ * en tâche de fond, puis elles sont dessinées quelques images. Mémorisée (comme Scene et les postes) :
+ * un nouveau rendu de la page ne redessine jamais tout l'arbre 3D d'un coup.
+ */
+const FirstView = memo(function FirstView({ onReady }: { onReady: () => void }) {
+  useEnvironment({ files: outsideHdri(useApp.getState().mood) })
+  const ref = useRef<THREE.Group>(null)
+  const { warm, scope, Provider } = useWarm(ref, onFirstViewWarm, onFirstViewCompile)
+  const frames = useRef(0)
+  useFrame(() => {
+    if (!warm) return
+    frames.current++
+    if (frames.current === 3) onReady()
+  })
+  return (
+    <Provider value={scope}>
+      <group ref={ref} visible={warm}>
+        <Near z={0} ahead={200} behind={6}>
+          <Exterior />
+        </Near>
+        <Hall />
+        {/* l'accueil (vu à travers la vitrine) arrive juste après : il ne retarde pas le lever de rideau */}
+        <Suspense fallback={null}>
+          <Warm>
+            <Near z={-3.6} ahead={40} behind={8}>
+              <Reception />
+            </Near>
+          </Warm>
+        </Suspense>
+      </group>
+    </Provider>
+  )
+})
+
+/** Un poste et son chargement ; mémorisé : monter le poste suivant ne redessine pas les précédents. */
+const StationSlot = memo(function StationSlot({ index, quality, onWarm }: { index: number; quality: Quality; onWarm: (index: number) => void }) {
+  const s = STATIONS[index]!
+  const warmed = useCallback(() => {
+    performance.mark(`3d:poste-${index}-pret`)
+    onWarm(index)
+  }, [onWarm, index])
+  return (
+    <Suspense fallback={null}>
+      <Station z={s.z} shadow={s.shadow} quality={quality} onWarm={warmed}>
+        {s.render(quality)}
+      </Station>
+    </Suspense>
+  )
+})
+
+function World({ quality, onLoaded }: { quality: Quality; onLoaded: () => void }) {
+  const ready = useApp((s) => s.ready)
+  // La façade se monte en transition, après la toute première image : React la construit par petits morceaux
+  // (géométries, textures dessinées, objets 3D) entre deux images, au lieu d'un seul bloc de plus d'une demi-seconde.
+  const [first, setFirst] = useState(false)
+  useEffect(() => startTransition(() => setFirst(true)), [])
+  // postes montés : un à la fois, chacun quand le précédent est prêt et que le navigateur a du temps libre
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!ready) return
+    // après l'ouverture de l'écran de chargement : rien ne doit la faire hoqueter
+    const id = window.setTimeout(() => {
+      preloadRest()
+      mountNext(1)
+    }, AFTER_INTRO)
+    return () => window.clearTimeout(id)
+  }, [ready])
+  // en transition : React prépare le poste par petits morceaux (géométries, textures dessinées), entre deux images
+  const mountNext = (n: number) => void whenIdle(() => startTransition(() => setCount((c) => Math.max(c, n))))
+  const next = useCallback((i: number) => mountNext(i + 2), [])
+  return (
+    <group>
+      {first && (
+        <Suspense fallback={null}>
+          <FirstView onReady={onLoaded} />
+        </Suspense>
+      )}
+      {STATIONS.slice(0, count).map((s, i) => (
+        <StationSlot key={s.z} index={i} quality={quality} onWarm={next} />
+      ))}
     </group>
   )
 }
 
 /**
- * La façade et l'entrée : seules attendues avant de lever le rideau. Prêtes quand leurs modèles, leurs textures
- * et l'éclairage de la rue sont chargés, puis dessinés quelques images (shaders compilés, textures envoyées).
+ * Fluidité d'abord : si l'image ralentit durablement, la scène est dessinée en un peu moins de pixels
+ * (l'œil ne le voit presque pas). On ne touche jamais aux matières, aux ombres ni aux effets en cours de route :
+ * cela recompilerait toute la scène d'un coup, au pire moment.
  */
-function FirstView({ onReady }: { onReady: () => void }) {
-  useEnvironment({ files: outsideHdri(useApp.getState().mood) })
-  const frames = useRef(0)
-  useFrame(() => {
-    if (++frames.current === 3) onReady()
-  })
+function AdaptiveResolution({ quality, onDpr }: { quality: Quality; onDpr: (dpr: number) => void }) {
+  const ready = useApp((s) => s.ready)
+  const viewport = useThree((s) => s.viewport.dpr)
+  const current = useRef(viewport)
+  current.current = viewport
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    if (!ready) return
+    // mesure une fois l'atelier installé (les premiers postes se préparent juste après l'arrivée)
+    const id = window.setTimeout(() => setOn(true), AFTER_INTRO + 3000)
+    return () => window.clearTimeout(id)
+  }, [ready])
+  if (!on) return null
+  const [low, high] = DPR[quality]
+  const max = Math.min(Math.max(low, window.devicePixelRatio || 1), high)
+  const apply = (next: number) => {
+    const dpr = Math.round(next * 100) / 100
+    if (dpr !== current.current) onDpr(dpr)
+  }
   return (
-    <>
-      <Near z={0} ahead={200} behind={6}>
-        <Exterior />
-      </Near>
-      <Hall />
-      {/* l'accueil (vu à travers la vitrine) arrive juste après : il ne retarde pas le lever de rideau */}
-      <Suspense fallback={null}>
-        <Near z={-3.6} ahead={40} behind={8}>
-          <Reception />
-        </Near>
-      </Suspense>
-    </>
+    <PerformanceMonitor
+      flipflops={4}
+      bounds={() => [45, 58]}
+      onDecline={() => apply(Math.max(MIN_DPR, current.current * 0.85))}
+      onIncline={() => apply(Math.min(max, current.current * 1.1))}
+    />
   )
 }
 
-function World({ quality, onLoaded }: { quality: Quality; onLoaded: () => void }) {
-  const [inside, setInside] = useState(false)
-  const onReady = useCallback(() => {
-    onLoaded()
-    preloadRest()
-    // les postes de l'intérieur se chargent ensuite, pendant que le visiteur découvre la façade
-    setTimeout(() => setInside(true), 400)
-  }, [onLoaded])
-  return (
-    <group>
-      <Suspense fallback={null}>
-        <FirstView onReady={onReady} />
-      </Suspense>
-      {inside &&
-        STATIONS.map((s) => (
-          <Suspense key={s.z} fallback={null}>
-            <Station z={s.z} shadow={s.shadow} quality={quality}>
-              {s.render(quality)}
-            </Station>
-          </Suspense>
-        ))}
-    </group>
-  )
-}
-
-function Scene({ quality, onLoaded }: { quality: Quality; onLoaded: () => void }) {
+const Scene = memo(function Scene({ quality, onLoaded, onDpr }: { quality: Quality; onLoaded: () => void; onDpr: (dpr: number) => void }) {
   const zone = useZone()
   return (
-    <>
+    <WarmRoot offscreen={quality !== 'low'}>
       <Atmosphere zone={zone} quality={quality} />
+      <LightRig />
       <CameraRig />
       <TextureWarmup />
       <World quality={quality} onLoaded={onLoaded} />
       {quality !== 'low' && <Effects quality={quality} />}
-    </>
+      <AdaptiveResolution quality={quality} onDpr={onDpr} />
+    </WarmRoot>
   )
-}
+})
 
 // Jamais sous la résolution native de l'écran (flou), sans dépasser ce que la carte graphique tient.
 const DPR: Record<Quality, [number, number]> = {
@@ -422,13 +554,18 @@ const DPR: Record<Quality, [number, number]> = {
   // un peu au-dessus de 1 : textes et panneaux restent lisibles sur les écrans très denses des téléphones
   low: [1, 1.25],
 }
+/** Plancher de l'adaptation : en dessous, l'image deviendrait floue. */
+const MIN_DPR = 0.75
 
-const DOWNGRADE: Record<Quality, Quality> = { high: 'medium', medium: 'low', low: 'low' }
 const MAX_RESTARTS = 3
 
-export function JourneyScene({ active, onLoaded }: { active: boolean; onLoaded: () => void }) {
+// mémorisée : la page se redessine souvent autour (chapitres, fenêtres), la scène seulement si `active` change
+export const JourneyScene = memo(function JourneyScene({ active, onLoaded }: { active: boolean; onLoaded: () => void }) {
   const quality = useApp((s) => s.quality)
   const setQuality = useApp((s) => s.setQuality)
+  // résolution réduite par AdaptiveResolution (null : celle de l'écran) ; gardée ici, sinon chaque nouveau
+  // rendu du Canvas (visite en pause, fenêtre ouverte…) la remettrait à sa valeur de départ
+  const [dpr, setDpr] = useState<number | null>(null)
   // Si la carte graphique « décroche » (contexte WebGL perdu), on relance la scène en qualité basse
   // au lieu de laisser un écran noir figé.
   const [epoch, setEpoch] = useState(0)
@@ -448,15 +585,19 @@ export function JourneyScene({ active, onLoaded }: { active: boolean; onLoaded: 
     <Canvas
       key={epoch}
       className="!absolute inset-0"
-      dpr={DPR[quality]}
+      dpr={dpr ?? DPR[quality]}
       shadows={quality === 'high' ? 'soft' : false}
       frameloop={active ? 'always' : 'never'}
       gl={{ antialias: quality === 'low', powerPreference: 'high-performance', toneMapping: THREE.NeutralToneMapping }}
       camera={{ fov: 45, near: 0.05, far: 600, position: [0, 4.6, 21] }}
-      onCreated={({ gl }) => watch(gl)}
+      onCreated={({ gl }) => {
+        performance.mark('3d:canvas')
+        // en production, pas de lecture des journaux de compilation (allers-retours avec la carte graphique)
+        gl.debug.checkShaderErrors = import.meta.env.DEV
+        watch(gl)
+      }}
     >
-      <PerformanceMonitor flipflops={2} bounds={() => [40, 58]} onDecline={() => setQuality(DOWNGRADE[useApp.getState().quality])} />
-      <Scene quality={quality} onLoaded={onLoaded} />
+      <Scene quality={quality} onLoaded={onLoaded} onDpr={setDpr} />
     </Canvas>
   )
-}
+})

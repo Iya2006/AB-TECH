@@ -19,3 +19,24 @@ export const loading = {
     return () => void listeners.delete(fn)
   },
 }
+
+/**
+ * Fin des étapes lourdes et indivisibles du démarrage 3D (premières images, reflets de la rue et de l'atelier,
+ * mise en place de la façade). L'écran de chargement attend ce signal pour lancer son animation de verre :
+ * elle se joue ensuite sans être interrompue (le reste se prépare par petits morceaux).
+ */
+let booted = false
+const bootListeners = new Set<() => void>()
+
+export const boot = {
+  done: () => booted,
+  set() {
+    if (booted) return
+    booted = true
+    bootListeners.forEach((fn) => fn())
+  },
+  subscribe(fn: () => void) {
+    bootListeners.add(fn)
+    return () => void bootListeners.delete(fn)
+  },
+}

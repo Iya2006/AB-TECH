@@ -1,7 +1,8 @@
-import { RoundedBox } from '@react-three/drei'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFittedModel, usePbr, type ModelId } from '../assets'
+import { RoundedBox } from '../RoundedBox'
+import { Warm } from '../Warm'
 import { G, M } from '../materials'
 import { productBoxFaceTexture, screenTexture, type ScreenVariant } from '../textures'
 import type { GroupProps } from './products'
@@ -11,7 +12,10 @@ export function Glb({ model, height, width, shadows = false, ...props }: GroupPr
   const object = useFittedModel(model, { height, width }, shadows)
   return (
     <group {...props}>
-      <primitive object={object} />
+      {/* modèle arrivé après son poste : préparé avant d'apparaître (voir Warm) */}
+      <Warm>
+        <primitive object={object} />
+      </Warm>
     </group>
   )
 }

@@ -1,7 +1,7 @@
 import gsap from 'gsap'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { GlassIconReveal } from '../components/ui/glass-icon-reveal'
-import { loading } from '../lib/loading'
+import { boot, loading } from '../lib/loading'
 import { lockScroll } from '../lib/scroll'
 import { useSite } from '../lib/site'
 import { useApp } from '../lib/store'
@@ -25,6 +25,8 @@ const SEEN_KEY = 'abt-intro-vue'
 /** Au-delà, on montre quand même le site (connexion très lente). */
 const FAILSAFE = 25000
 const SLOW_HINT = 7000
+/** Attente maximale du démarrage 3D avant de lancer le verre (connexion lente, 3D indisponible…). */
+const BOOT_WAIT = 3000
 
 const store = {
   get(storage: 'local' | 'session', key: string) {
@@ -69,14 +71,31 @@ export function Preloader({ loaded }: { loaded: boolean }) {
   })
   const [titled, setTitled] = useState(false)
   const [ended, setEnded] = useState(false)
+  // Le verre attend la fin des étapes lourdes du démarrage 3D (BOOT_WAIT au plus) : il se joue ensuite d'une
+  // traite, sans à-coup. Pendant ce temps, l'écran reste calme (barre de progression).
+  const [started, setStarted] = useState(() => boot.done())
+  useEffect(() => {
+    if (started) return
+    const off = boot.subscribe(() => setStarted(true))
+    const id = setTimeout(() => setStarted(true), BOOT_WAIT)
+    return () => {
+      off()
+      clearTimeout(id)
+    }
+  }, [started])
   const [gone, setGone] = useState(false)
   const [forced, setForced] = useState(false)
   const [slow, setSlow] = useState(false)
 
+  // le compteur suit la valeur animée ; la barre, elle, glisse par une transition CSS (animée par le compositeur
+  // du navigateur : elle reste fluide même quand la page prépare la 3D)
   const render = () => {
-    const v = progress.current.v
-    if (counter.current) counter.current.textContent = `${Math.round(v)} %`
-    if (bar.current) bar.current.style.transform = `scaleX(${v / 100})`
+    if (counter.current) counter.current.textContent = `${Math.round(progress.current.v)} %`
+  }
+  const barTo = (v: number, seconds: number) => {
+    if (!bar.current) return
+    bar.current.style.transitionDuration = `${seconds}s`
+    bar.current.style.transform = `scaleX(${v / 100})`
   }
 
   // première visite : on attend un court instant le logo de l'espace pro avant de lancer le verre
@@ -93,6 +112,7 @@ export function Preloader({ loaded }: { loaded: boolean }) {
     // la barre suit le vrai téléchargement de la façade (les 6 derniers % : sa première image)
     const follow = (p: number) => {
       if (leaving.current) return
+      barTo(6 + p * 88, 0.6)
       gsap.to(progress.current, { v: 6 + p * 88, duration: 0.6, ease: 'power2.out', overwrite: true, onUpdate: render })
     }
     follow(loading.get())
@@ -117,6 +137,7 @@ export function Preloader({ loaded }: { loaded: boolean }) {
     gsap.killTweensOf(progress.current)
     store.set('session', SEEN_KEY, '1')
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    barTo(100, 0.3)
     const tl = gsap
       .timeline({ onComplete: () => setGone(true) })
       .to(progress.current, { v: 100, duration: 0.3, ease: 'power2.out', onUpdate: render })
@@ -152,6 +173,7 @@ export function Preloader({ loaded }: { loaded: boolean }) {
             originalColors
             loop={false}
             speed={speed}
+            paused={!started}
             tuning={TUNING}
             label={site.name}
             className="absolute inset-0 cursor-default"
@@ -178,7 +200,11 @@ export function Preloader({ loaded }: { loaded: boolean }) {
 
       <div ref={footer} className="absolute inset-x-0 bottom-[max(2.5rem,6svh)] mx-auto w-[min(300px,72vw)]">
         <div className="h-1 overflow-hidden rounded-full bg-ink/[0.08]">
-          <div ref={bar} className="h-full origin-left rounded-full bg-gradient-to-r from-accent to-accent-2" style={{ transform: 'scaleX(0)' }} />
+          <div
+            ref={bar}
+            className="h-full origin-left rounded-full bg-gradient-to-r from-accent to-accent-2"
+            style={{ transform: 'scaleX(0)', transitionProperty: 'transform', transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)' }}
+          />
         </div>
         <p className="mt-3 flex justify-between text-[12.5px] font-semibold text-ink/45">
           <span>{slow ? 'Connexion lente, l’atelier arrive…' : 'Ouverture de l’atelier…'}</span>

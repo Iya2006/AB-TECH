@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { CHAPTERS, chapterAnchor } from '../journey/chapters'
 import { requestQuote } from '../lib/actions'
 import { useCart } from '../lib/cart'
-import { lockScroll, onJourneyProgress, scrollToElement, scrollToJourney } from '../lib/scroll'
+import { journey, lockScroll, onJourneyProgress, scrollToElement, scrollToJourney } from '../lib/scroll'
 import { useApp } from '../lib/store'
 import { AccountMenu } from './AccountMenu'
 import { ArrowRight, Logo } from './primitives'
@@ -53,19 +53,36 @@ function useScrollLine(line: RefObject<HTMLSpanElement | null>) {
   const [compact, setCompact] = useState(false)
   useEffect(() => {
     let raf = 0
+    // hauteur de la page mesurée seulement quand elle change : la lire à chaque image du défilement
+    // forçait le navigateur à recalculer toute la mise en page
+    let max = 0
+    const measure = () => {
+      max = document.documentElement.scrollHeight - window.innerHeight
+    }
     const update = () => {
       raf = 0
-      const max = document.documentElement.scrollHeight - window.innerHeight
-      if (line.current) line.current.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`
-      setCompact(window.scrollY > 40)
+      // position tenue par la boucle de défilement (lire window.scrollY ici forçait un recalcul de la page)
+      const y = journey.scrollY
+      if (line.current) line.current.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`
+      setCompact(y > 40)
     }
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update)
     }
+    const onResize = () => {
+      measure()
+      onScroll()
+    }
+    const ro = new ResizeObserver(onResize)
+    ro.observe(document.body)
+    measure()
     update()
     window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onResize)
     return () => {
+      ro.disconnect()
       window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
       cancelAnimationFrame(raf)
     }
   }, [line])

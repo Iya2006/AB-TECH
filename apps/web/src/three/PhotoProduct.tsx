@@ -4,12 +4,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { formatPrice } from '../config/brand'
 import { CHAPTERS } from '../journey/chapters'
+import { whenIdle } from '../lib/idle'
 import { isPhotoModel, PHOTO, tint } from '../lib/mockup/catalog'
-import { mockupCanvas } from '../lib/mockup/engine'
+import { loadBase, renderMockup } from '../lib/mockup/engine'
 import { useApp } from '../lib/store'
 import { thumbUrl } from '../ui/img'
 import type { GroupProps } from './models/products'
-import { downscale, loadImage, makeTexture } from './textureQueue'
+import { downscale, loadBitmap, loadImage, makeBitmapTexture, makeTexture } from './textureQueue'
+import { Warm } from './Warm'
 
 /**
  * Produits de l'atelier montrés en vraie photo : la photo ajoutée par l'admin,
@@ -28,8 +30,11 @@ export interface PhotoTexture {
 /** Taille des photos dans la scène : une photo produit fait ~200 px à l'écran. */
 const PHOTO_MAX = 512
 
-/** Vrai si les bords de l'image sont transparents (photo détourée). */
-function isCutout(img: HTMLCanvasElement) {
+/**
+ * Vrai si les bords de l'image sont transparents (photo détourée). Lu sur l'image décodée (en mémoire) :
+ * lire un canvas déjà passé par la carte graphique obligerait le navigateur à l'attendre, bloqué.
+ */
+function isCutout(img: ImageBitmap) {
   const c = document.createElement('canvas')
   c.width = c.height = 24
   const ctx = c.getContext('2d', { willReadFrequently: true })!
@@ -49,24 +54,33 @@ export function useProductPhoto(product: Product): PhotoTexture | null {
   useEffect(() => {
     let off = false
     let made: THREE.Texture | null = null
+    // les calculs d'image se font un produit à la fois, quand le navigateur a du temps libre (jamais pendant le défilement)
     const run = async () => {
-      let source: HTMLCanvasElement
-      let cutout = true
-      let hanger = false
       if (own) {
-        source = downscale(await loadImage(thumbUrl(own, 800)), PHOTO_MAX)
-        cutout = isCutout(source)
-        hanger = withHanger(own)
-      } else if (isPhotoModel(product.model)) {
-        const entry = PHOTO[product.model]
-        const logo = product.printImage ? await loadImage(thumbUrl(product.printImage, 600)).catch(() => null) : null
-        const full = await mockupCanvas(entry.produit, { color: tint(entry, entry.produit, product.color), print: logo ? { text: '', ink: '#000', logo } : null })
-        source = downscale(full, PHOTO_MAX)
-        hanger = product.model === 'tshirt' || product.model === 'polo' || product.model === 'sweat'
-      } else return
+        // décodée hors du fil principal, déjà à la bonne taille
+        const bitmap = await loadBitmap(thumbUrl(own, PHOTO_MAX), PHOTO_MAX)
+        if (off) return bitmap.close()
+        const cutout = await whenIdle(() => isCutout(bitmap))
+        if (off) return bitmap.close()
+        made = makeBitmapTexture(bitmap)
+        setPhoto({ texture: made, aspect: bitmap.width / bitmap.height, cutout, hanger: withHanger(own) })
+        return
+      }
+      // sinon : la photo réelle du modèle, recolorée (photo détourée)
+      if (!isPhotoModel(product.model)) return
+      const entry = PHOTO[product.model]
+      const logo = product.printImage ? await loadImage(thumbUrl(product.printImage, 600)).catch(() => null) : null
+      const base = await loadBase(entry.produit)
+      if (off) return
+      const source = await whenIdle(() => {
+        const full = document.createElement('canvas')
+        renderMockup(full, base, { color: tint(entry, entry.produit, product.color), print: logo ? { text: '', ink: '#000', logo } : null })
+        return downscale(full, PHOTO_MAX)
+      })
       if (off) return
       made = makeTexture(source)
-      setPhoto({ texture: made, aspect: source.width / source.height, cutout, hanger })
+      const hanger = product.model === 'tshirt' || product.model === 'polo' || product.model === 'sweat'
+      setPhoto({ texture: made, aspect: source.width / source.height, cutout: true, hanger })
     }
     run().catch(() => !off && setPhoto(null))
     return () => {
@@ -86,16 +100,19 @@ export function PhotoPlane({ photo, height, anchor = 'bottom', ...props }: Group
   const y = anchor === 'bottom' ? height / 2 : -height / 2
   return (
     <group {...props}>
-      {!photo.cutout && (
-        <mesh position={[0, y, -0.006]}>
-          <boxGeometry args={[width + 0.04, height + 0.04, 0.01]} />
-          <meshStandardMaterial color="#ffffff" roughness={0.6} />
+      {/* la photo arrive après son poste : préparée avant d'apparaître (voir Warm) */}
+      <Warm>
+        {!photo.cutout && (
+          <mesh position={[0, y, -0.006]}>
+            <boxGeometry args={[width + 0.04, height + 0.04, 0.01]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.6} />
+          </mesh>
+        )}
+        <mesh position-y={y} castShadow={photo.cutout}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial map={photo.texture} alphaTest={photo.cutout ? 0.45 : 0} alphaToCoverage={photo.cutout} side={THREE.DoubleSide} />
         </mesh>
-      )}
-      <mesh position-y={y} castShadow={photo.cutout}>
-        <planeGeometry args={[width, height]} />
-        <meshBasicMaterial map={photo.texture} alphaTest={photo.cutout ? 0.45 : 0} alphaToCoverage={photo.cutout} side={THREE.DoubleSide} />
-      </mesh>
+      </Warm>
     </group>
   )
 }

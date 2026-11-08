@@ -1,10 +1,12 @@
 import Lenis from 'lenis'
 
 /**
- * Progression (0 → 1) dans le parcours 3D.
+ * Progression (0 → 1) dans le parcours 3D, et position de défilement de la page.
  * Objet mutable lu à chaque frame par la caméra : aucun re-render React.
+ * `scrollY` vient de Lenis (simple nombre) : lire window.scrollY à chaque image force le navigateur
+ * à recalculer la mise en page dès que quelque chose a bougé dans la page.
  */
-export const journey = { progress: 0, top: 0, height: 1 }
+export const journey = { progress: 0, top: 0, height: 1, scrollY: 0 }
 
 type Listener = (progress: number) => void
 const listeners = new Set<Listener>()
@@ -20,8 +22,10 @@ function measure() {
 }
 
 function tick() {
+  const y = lenis ? lenis.scroll : window.scrollY
+  journey.scrollY = y
   const span = Math.max(1, journey.height - window.innerHeight)
-  const p = clamp01((window.scrollY - journey.top) / span)
+  const p = clamp01((y - journey.top) / span)
   if (p !== journey.progress) {
     journey.progress = p
     listeners.forEach((fn) => fn(p))

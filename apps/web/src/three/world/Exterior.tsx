@@ -1,7 +1,8 @@
-import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { RoundedBox } from '../RoundedBox'
+import { Warm } from '../Warm'
 import { BRAND } from '../../config/brand'
 import { FONT } from '../../lib/print'
 import { journey } from '../../lib/scroll'
@@ -12,7 +13,7 @@ import { thumb } from '../Gallery'
 import { G, M } from '../materials'
 import { Glb } from '../models/devices'
 import { createCanvas, drawScreenSlide, openSignTexture, SCREEN_SLIDES, signTexture, subSignTexture, toTexture, vinylTexture } from '../textures'
-import { loadImage } from '../textureQueue'
+import { loadBitmap } from '../textureQueue'
 import { BikeRack, BladeSign, Canopy, GlassSheen, Parking, StreetFurniture, Totem, WallWasher } from './Storefront'
 import { compositePanelTexture, neighbourTexture, signHaloTexture, stoneCladTexture } from './storefrontTextures'
 
@@ -111,15 +112,17 @@ function WindowPhoto({ url, height, anchor, ...props }: { url: string; height: n
   const img = tex.image as { width: number; height: number }
   const w = height * (img.width / img.height)
   return (
-    <mesh {...props} position-y={props.position[1] + (anchor === 'top' ? -height / 2 : height / 2)}>
-      <planeGeometry args={[w, height]} />
-      <meshBasicMaterial map={tex} alphaTest={0.45} side={THREE.DoubleSide} />
-    </mesh>
+    <Warm>
+      <mesh {...props} position-y={props.position[1] + (anchor === 'top' ? -height / 2 : height / 2)}>
+        <planeGeometry args={[w, height]} />
+        <meshBasicMaterial map={tex} alphaTest={0.45} side={THREE.DoubleSide} />
+      </mesh>
+    </Warm>
   )
 }
 
 /** Diapositive de l'espace pro sur l'écran de vitrine : image plein cadre, nom de la marque et repères. */
-function drawImageSlide(ctx: CanvasRenderingContext2D, w: number, h: number, images: HTMLImageElement[], index: number) {
+function drawImageSlide(ctx: CanvasRenderingContext2D, w: number, h: number, images: ImageBitmap[], index: number) {
   const img = images[index % images.length]!
   ctx.fillStyle = '#0a1020'
   ctx.fillRect(0, 0, w, h)
@@ -147,14 +150,21 @@ function ServiceScreen() {
     return { ctx, tex: toTexture(canvas) }
   }, [])
   const urls = useSite((s) => s.settings.display.screen)
-  const [images, setImages] = useState<HTMLImageElement[]>([])
+  const [images, setImages] = useState<ImageBitmap[]>([])
   useEffect(() => {
     let off = false
-    Promise.allSettled(urls.map((u) => loadImage(thumb(u, 1200)))).then((results) => {
-      if (!off) setImages(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])))
+    let loaded: ImageBitmap[] = []
+    // décodées hors du fil principal : changer de diapositive ne fait plus hoqueter la façade
+    Promise.allSettled(urls.map((u) => loadBitmap(thumb(u, 1200), 1200, false))).then((results) => {
+      loaded = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+      if (off) loaded.forEach((b) => b.close())
+      else setImages(loaded)
     })
     return () => {
       off = true
+      // plus dessinées (une image libérée ne peut plus l'être)
+      setImages([])
+      loaded.forEach((b) => b.close())
     }
   }, [urls])
   const slide = useRef(-1)
@@ -166,8 +176,13 @@ function ServiceScreen() {
     const key = images.length * 100 + next
     if (key === slide.current) return
     slide.current = key
-    if (images.length) drawImageSlide(ctx, 720, 1152, images, next)
-    else drawScreenSlide(ctx, 720, 1152, next)
+    try {
+      if (images.length) drawImageSlide(ctx, 720, 1152, images, next)
+      else drawScreenSlide(ctx, 720, 1152, next)
+    } catch {
+      // images remplacées entre deux images : la diapositive suivante sera la bonne
+      return
+    }
     tex.needsUpdate = true
   })
   return (
@@ -229,13 +244,11 @@ function SlidingDoor({ side }: { side: -1 | 1 }) {
   )
 }
 
-/** Réverbère : s'allume la nuit (ampoule + lumière ponctuelle). */
+/** Réverbère : l'ampoule s'allume la nuit (sa lumière sur la rue est dans LightRig, avec les autres). */
 function StreetLamp({ x, z }: { x: number; z: number }) {
-  const light = useRef<THREE.PointLight>(null)
   const bulb = useRef<THREE.MeshBasicMaterial>(null)
   useFrame((_, dt) => {
     const night = useApp.getState().mood === 'night' && journey.progress < 0.2
-    if (light.current) light.current.intensity = THREE.MathUtils.damp(light.current.intensity, night ? 40 : 0, 4, dt)
     if (bulb.current) bulb.current.color.setScalar(THREE.MathUtils.damp(bulb.current.color.r, night ? 3 : 0.9, 4, dt))
   })
   return (
@@ -243,7 +256,6 @@ function StreetLamp({ x, z }: { x: number; z: number }) {
       <Suspense fallback={null}>
         <Glb model="streetLamp" height={5.2} shadows />
       </Suspense>
-      <pointLight ref={light} position={[0, 4.6, 0]} intensity={0} distance={16} decay={2} color="#ffd59a" />
       <mesh position={[0, 4.75, 0]}>
         <sphereGeometry args={[0.14, 16, 12]} />
         <meshBasicMaterial ref={bulb} color={[0.9, 0.9, 0.9]} toneMapped={false} />
@@ -448,10 +460,12 @@ export function Exterior() {
         <boxGeometry args={[11.2, 0.03, 0.01]} />
       </mesh>
       {signPhoto ? (
-        <mesh position={[0, 6.3, 0.362]}>
-          <planeGeometry args={[11.1, 2.17]} />
-          <meshBasicMaterial ref={photoMat} map={signPhoto} toneMapped={false} />
-        </mesh>
+        <Warm>
+          <mesh position={[0, 6.3, 0.362]}>
+            <planeGeometry args={[11.1, 2.17]} />
+            <meshBasicMaterial ref={photoMat} map={signPhoto} toneMapped={false} />
+          </mesh>
+        </Warm>
       ) : (
         <>
           {/* lettres boîtier : halo sur le panneau, chants sombres (épaisseur vue de biais), faces lumineuses */}
@@ -490,11 +504,7 @@ export function Exterior() {
         <Glb model="utilityBox" height={1.3} position={[10.95, 0, -2.4]} rotation-y={Math.PI / 2} />
       </Suspense>
 
-      {/* Lumières de façade : visibles surtout la nuit */}
-      <pointLight position={[0, 3.4, 1.4]} intensity={6} distance={7} decay={2} color="#ffe6c4" />
-      {/* l'atelier éclaire la vitrine de l'intérieur (une seule source : chaque lumière coûte sur tous les pixels) */}
-      <pointLight position={[0, 3.2, -3.5]} intensity={22} distance={14} decay={2} color="#f4f8ff" />
-
+      {/* lumières de façade et de vitrine : dans LightRig (JourneyScene), toujours présentes */}
       <Suspense fallback={null}>
         {[-2.85, 2.85].map((x) => (
           <group key={x} position={[x, 0.1, 1.15]}>

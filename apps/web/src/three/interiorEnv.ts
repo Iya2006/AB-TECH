@@ -39,6 +39,8 @@ export function buildInteriorEnvironment(gl: THREE.WebGLRenderer) {
   add(light('#fff3e2', 0.5), [-14, 2.5, 0], Math.PI / 2, [40, 3])
 
   const pmrem = new THREE.PMREMGenerator(gl)
+  // Taille par défaut (256), la même que celle des reflets de la rue (Three.js ne descend pas en dessous) :
+  // les shaders des matériaux en dépendent, ils restent donc identiques au passage de la porte.
   const target = pmrem.fromScene(scene, 0.02, 0.1, 100)
   pmrem.dispose()
   sphere.dispose()

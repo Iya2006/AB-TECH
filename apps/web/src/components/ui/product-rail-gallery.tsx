@@ -615,6 +615,17 @@ export function ClothingRailHero({
 
   React.useEffect(() => { setPlaying(autoplay); }, [autoplay]);
 
+  // hors de l'écran, le portant ne s'anime pas (lecture auto, coup de brosse d'arrivée) : chaque image animée
+  // réécrit le style de toutes les pièces, ce qui volerait du temps à la visite 3D en haut de la page
+  const [inView, setInView] = React.useState(false);
+  React.useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const io = new IntersectionObserver(([entry]) => setInView(!!entry?.isIntersecting), { rootMargin: "120px 0px" });
+    io.observe(stage);
+    return () => io.disconnect();
+  }, []);
+
   React.useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -805,11 +816,11 @@ export function ClothingRailHero({
 
   const brushed = React.useRef(false);
   React.useEffect(() => {
-    if (!size.width || brushed.current || reduced) return;
+    if (!size.width || brushed.current || reduced || !inView) return;
     brushed.current = true;
     const timers = items.map((_, i) => window.setTimeout(() => impulse(i, 46 - i * 2.5), 120 + i * 55));
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [size.width, reduced, items, impulse]);
+  }, [size.width, reduced, items, impulse, inView]);
 
   React.useEffect(() => () => { cancelAnimationFrame(sim.current.raf); sim.current.raf = 0; }, []);
 
@@ -855,7 +866,7 @@ export function ClothingRailHero({
   }, [stop, impulse]);
 
   React.useEffect(() => {
-    if (!playing || reduced || openIndex !== null || count === 0 || !size.width) return;
+    if (!playing || !inView || reduced || openIndex !== null || count === 0 || !size.width) return;
     const first = window.setTimeout(function advance() {
       const current = live.current.active;
       choose(current === null ? 0 : (current + 1) % live.current.count, true);
@@ -863,7 +874,7 @@ export function ClothingRailHero({
     }, active === null ? 1100 : interval);
     let timer = first;
     return () => window.clearTimeout(timer);
-  }, [playing, reduced, openIndex, count, interval, size.width, choose, active]);
+  }, [playing, inView, reduced, openIndex, count, interval, size.width, choose, active]);
 
   const open = React.useCallback((index: number) => {
     stop();

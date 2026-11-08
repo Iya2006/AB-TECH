@@ -1,6 +1,6 @@
-import { RoundedBox } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
+import { RoundedBox } from '../RoundedBox'
 import { G, M } from '../materials'
 import { Glb } from '../models/devices'
 import { signTexture } from '../textures'

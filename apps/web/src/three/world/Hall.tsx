@@ -322,9 +322,7 @@ export function Hall() {
         <planeGeometry args={[4.4, 0.55]} />
         <meshBasicMaterial map={techSignTexture()} transparent toneMapped={false} color={[1.6, 1.6, 1.6]} />
       </mesh>
-      {/* lumière d'ambiance de la boutique */}
-      <pointLight position={[-5.5, 3.6, -56]} intensity={6} distance={10} decay={2} color="#ffffff" />
-      <pointLight position={[5, 3.6, -64]} intensity={6} distance={10} decay={2} color="#ffffff" />
+      {/* lumière d'ambiance de la boutique : dans LightRig (JourneyScene) */}
     </group>
   )
 }

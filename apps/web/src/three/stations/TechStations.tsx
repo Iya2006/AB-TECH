@@ -1,7 +1,8 @@
-import { RoundedBox, useFBO } from '@react-three/drei'
+import { useFBO } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { Suspense, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { RoundedBox } from '../RoundedBox'
 import type { Quality } from '../../lib/device'
 import { journey } from '../../lib/scroll'
 import { productsOf, realisationsOf, useSite } from '../../lib/site'
@@ -241,7 +242,9 @@ function CctvSystem({ quality }: { quality: Quality }) {
       overlay.tex.needsUpdate = true
     }
 
-    if (!live || frame.current++ % 2 !== 0 || !lens.current || !screen.current || !cone.current) return
+    // une image sur quatre (15 images/s, la cadence d'une vraie caméra de surveillance) : chaque prise de vue
+    // redessine la pièce entière, ce qui doublait le travail de la carte graphique devant ce poste
+    if (!live || frame.current++ % 4 !== 0 || !lens.current || !screen.current || !cone.current) return
     lens.current.getWorldPosition(cam.position)
     lens.current.getWorldQuaternion(cam.quaternion)
     screen.current.visible = false

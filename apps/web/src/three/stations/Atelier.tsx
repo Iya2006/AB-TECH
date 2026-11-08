@@ -1,7 +1,7 @@
-import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { Suspense, useMemo, useRef, type ReactNode } from 'react'
 import * as THREE from 'three'
+import { RoundedBox } from '../RoundedBox'
 import type { MachineId } from '../../lib/machines'
 import { journey } from '../../lib/scroll'
 import { productsOf, realisationsOf, useSite } from '../../lib/site'

@@ -27,11 +27,23 @@ export function detectQuality(): Quality {
 const INTEGRATED = /intel|uhd|iris|hd graphics|radeon\(tm\) graphics|vega \d|mali|adreno|powervr|apple gpu/i
 const DISCRETE = /nvidia|geforce|quadro|rtx|gtx|radeon rx|radeon pro|apple m\d/i
 
-let gpu: { webgl: boolean; renderer: string } | null = null
+type Gpu = { webgl: boolean; renderer: string }
+let gpu: Gpu | null = null
 
-/** WebGL disponible, et nom de la carte graphique annoncé par le navigateur (vide s'il est masqué). Mesuré une fois. */
+const GPU_KEY = 'abt-gpu'
+
+/**
+ * WebGL disponible, et nom de la carte graphique annoncé par le navigateur (vide s'il est masqué).
+ * Mesuré une fois par onglet : ouvrir un contexte WebGL pour le lire coûte plus d'un dixième de seconde.
+ */
 export function probeGpu() {
   if (gpu) return gpu
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(GPU_KEY) ?? 'null') as Gpu | null
+    if (saved && typeof saved.webgl === 'boolean' && typeof saved.renderer === 'string') return (gpu = saved)
+  } catch {
+    // stockage indisponible : on mesure
+  }
   gpu = { webgl: false, renderer: '' }
   try {
     const canvas = document.createElement('canvas')
@@ -43,6 +55,11 @@ export function probeGpu() {
     }
   } catch {
     // pas de WebGL
+  }
+  try {
+    sessionStorage.setItem(GPU_KEY, JSON.stringify(gpu))
+  } catch {
+    // stockage indisponible
   }
   return gpu
 }

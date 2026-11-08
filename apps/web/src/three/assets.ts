@@ -2,7 +2,8 @@ import { useEnvironment, useGLTF, useTexture } from '@react-three/drei'
 import { useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 import type { Mood } from '../lib/store'
-import { downscale, loadImage, makeTexture } from './textureQueue'
+import { plainGlass } from './precompile'
+import { loadBitmap, makeBitmapTexture, makeTexture } from './textureQueue'
 
 /**
  * Ressources réalistes CC0 (Poly Haven) : textures PBR, éclairages HDRI et modèles 3D.
@@ -78,6 +79,8 @@ export function usePbr(role: PbrRole, repeat: [number, number]) {
 export function useFittedModel(id: ModelId, fit: { height?: number; width?: number; depth?: number }, shadows = false) {
   const { scene } = useGLTF(MODEL[id])
   return useMemo(() => {
+    // matériaux partagés par toutes les copies : corrigés une fois (verre réfractif → verre simple, voir plainGlass)
+    plainGlass(scene)
     const root = scene.clone(true)
     const box = new THREE.Box3().setFromObject(root)
     const size = box.getSize(new THREE.Vector3())
@@ -110,8 +113,9 @@ export function useLazyTexture(url: string | null | undefined, max = 1024) {
       return
     }
     let cancelled = false
-    loadImage(url)
-      .then((img) => !cancelled && setTex(makeTexture(downscale(img, max))))
+    // décodée et réduite hors du fil principal
+    loadBitmap(url, max)
+      .then((bitmap) => (cancelled ? bitmap.close() : setTex(makeBitmapTexture(bitmap))))
       .catch(() => !cancelled && setTex(null))
     return () => {
       cancelled = true
@@ -122,9 +126,9 @@ export function useLazyTexture(url: string | null | undefined, max = 1024) {
 }
 
 /** Dessine une image dans un canvas aux proportions d'un support : entière (contain) ou recadrée (cover). */
-export function fitImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number, fit: 'contain' | 'cover') {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
+export function fitImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement | ImageBitmap, w: number, h: number, fit: 'contain' | 'cover') {
+  const iw = ('naturalWidth' in img && img.naturalWidth) || img.width
+  const ih = ('naturalHeight' in img && img.naturalHeight) || img.height
   const s = fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih)
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, (w - iw * s) / 2, (h - ih * s) / 2, iw * s, ih * s)
@@ -142,9 +146,10 @@ export function useFittedTexture(url: string | null | undefined, w: number, h: n
       return
     }
     let cancelled = false
-    loadImage(url)
+    // décodée hors du fil principal : la dessiner dans le canvas ne coûte plus rien
+    loadBitmap(url, Math.max(w, h), false)
       .then((img) => {
-        if (cancelled) return
+        if (cancelled) return img.close()
         const canvas = document.createElement('canvas')
         canvas.width = w
         canvas.height = h
@@ -152,6 +157,7 @@ export function useFittedTexture(url: string | null | undefined, w: number, h: n
         ctx.fillStyle = background
         ctx.fillRect(0, 0, w, h)
         fitImage(ctx, img, w, h, fit)
+        img.close()
         setTex(makeTexture(canvas))
       })
       .catch(() => !cancelled && setTex(null))

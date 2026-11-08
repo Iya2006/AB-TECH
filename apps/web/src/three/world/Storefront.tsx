@@ -1,7 +1,7 @@
-import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { RoundedBox } from '../RoundedBox'
 import { useApp } from '../../lib/store'
 import { M } from '../materials'
 import { Glb } from '../models/devices'

@@ -1,3 +1,4 @@
+import { whenIdle } from '../idle'
 import { drawPrint, type PrintImage } from '../print'
 
 /**
@@ -75,11 +76,11 @@ function pixels(img: HTMLImageElement, w: number, h: number) {
   return ctx.getImageData(0, 0, w, h).data
 }
 
-/** Charge (une seule fois) la photo et son masque. */
+/** Charge (une seule fois) la photo et son masque ; l'analyse des pixels attend un moment de calme. */
 export function loadBase(base: MockupBase): Promise<Loaded> {
   let p = cache.get(base.src)
   if (!p) {
-    p = Promise.all([loadImage(base.src), loadImage(base.mask)]).then(([photo, maskImg]) => {
+    p = Promise.all([loadImage(base.src), loadImage(base.mask)]).then(([photo, maskImg]) => whenIdle(() => {
       const { width: w, height: h } = base
       const rgba = pixels(photo, w, h)
       const m4 = pixels(maskImg, w, h)
@@ -99,7 +100,7 @@ export function loadBase(base: MockupBase): Promise<Loaded> {
         }
       }
       return { base, rgba, mask, shade, box }
-    })
+    }))
     p.catch(() => cache.delete(base.src))
     cache.set(base.src, p)
   }
