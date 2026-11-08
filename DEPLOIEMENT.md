@@ -1,108 +1,116 @@
-# Mettre le site en ligne gratuitement
+# Mettre le site en ligne (essai gratuit sur Render)
 
 Objectif : une adresse publique (`https://ab-tech….onrender.com`) à envoyer au client, pour qu'il voie le site,
-teste la boutique et prenne en main l'administration. Tout est gratuit.
+crée un compte, teste la boutique et prenne en main l'administration. Tout est gratuit.
 
-| Rôle | Service | Pourquoi celui-là |
-| --- | --- | --- |
-| Site + API (un seul service) | [Render](https://render.com), offre gratuite | serveur Node complet ; site et API à la même adresse (connexion par cookie simple et sûre) |
-| Base de données | [Neon](https://neon.com), offre gratuite | Postgres sans date d'expiration (la base gratuite de Render est supprimée au bout de 30 jours) |
-| Photos envoyées depuis l'administration | [Cloudinary](https://cloudinary.com), offre gratuite | le disque d'un service Render gratuit est effacé à chaque redémarrage |
-
-Le fichier [`render.yaml`](render.yaml) décrit déjà le service : Render le lit tout seul.
+Le fichier [`render.yaml`](render.yaml) décrit tout : Render crée **la base de données** et **le site**, et les relie
+lui-même. Le site en ligne a donc sa propre base, indépendante de celle de votre ordinateur.
 
 ---
 
-## 1. La base de données (Neon) — 3 minutes
+## 1. Créer la base et le site — environ 10 minutes
 
-1. Ouvrez [neon.com](https://neon.com) → **Sign up** (le plus simple : « Continue with GitHub »).
-2. Créez un projet : nom `ab-tech`, version Postgres proposée par défaut,
-   région **AWS Europe Central 1 (Frankfurt)** (la même que le site, pour la rapidité).
-3. Sur la page du projet, bouton **Connect** → copiez la **chaîne de connexion** complète
-   (elle commence par `postgresql://` et se termine par `sslmode=require…`). Gardez-la de côté : c'est un mot de passe.
+1. Ouvrez [dashboard.render.com](https://dashboard.render.com) et connectez-vous avec **GitHub**.
+2. En haut à droite : **+ New** → **Blueprint**.
+3. Si le dépôt `AB-TECH` n'apparaît pas : **Configure account** (ou **Connect GitHub**) → sur la page GitHub,
+   *Repository access* → *Only select repositories* → `AB-TECH` → **Save**.
+4. Choisissez **Iya2006/AB-TECH** → **Connect**. Nom du Blueprint : `ab-tech`, branche : `main`.
+5. Render annonce deux éléments, tous deux **Free** :
+   - `ab-tech-db` : la base de données Postgres ;
+   - `ab-tech` : le site.
+6. Remplissez les deux valeurs demandées :
+   - **`ADMIN_EMAIL`** : l'adresse e-mail de l'administrateur (celle qui se connectera à `/admin`) ;
+   - **`ADMIN_PASSWORD`** : un mot de passe **provisoire** d'au moins **10 caractères**.
+7. Cliquez sur **Deploy Blueprint**.
+8. Patientez : la base est prête en 1 à 2 minutes, le site se construit en 5 à 10 minutes.
+   Pour suivre : service **ab-tech** → **Logs**. C'est prêt quand l'état passe à **Live**.
+9. L'adresse du site s'affiche en haut de la page du service **ab-tech** : c'est le lien à envoyer.
 
-## 2. Les photos (Cloudinary) — 2 minutes
+## 2. Première connexion de l'administrateur
 
-1. Ouvrez [cloudinary.com](https://cloudinary.com) → **Sign up for free**.
-2. Dans le tableau de bord, repérez **API environment variable** (ou **Settings → API Keys**) et copiez la valeur
-   qui commence par `cloudinary://` (sans le `CLOUDINARY_URL=` devant). C'est aussi un secret.
+1. Ouvrez `https://<votre-adresse>.onrender.com/connexion`.
+2. Connectez-vous avec `ADMIN_EMAIL` et `ADMIN_PASSWORD`.
+3. Le site demande aussitôt de **choisir un nouveau mot de passe** (10 caractères minimum) :
+   le mot de passe provisoire ne sert qu'une fois, et seul l'administrateur connaît le nouveau.
+4. Personnalisez : **Apparence du site** (logo, accueil, enseigne…), **Paramètres** (téléphones, indicatif WhatsApp,
+   devise, réseaux), **Produits**, **Réalisations**.
 
-## 3. Reprendre le contenu actuel du site (recommandé) — 2 minutes
+Le mot de passe du site local (http://localhost:8080) **ne marche pas** en ligne : le site en ligne a sa propre base,
+qui démarre avec les exemples. Pour retrouver en ligne le contenu local, voir « Reprendre le contenu du site local ».
 
-Le site local (http://localhost:8080) contient déjà votre travail : logo, téléphones, photos de produits, textes,
-compte administrateur (avec son mot de passe actuel), et quelques devis, commandes et avis de test.
-Pour retrouver tout cela en ligne :
+## 3. Garder les photos envoyées (conseillé)
 
-1. Copiez `.env.cloud.example` en **`.env.cloud`** (à la racine du projet ; ce fichier n'est jamais envoyé sur GitHub)
-   et collez-y les deux valeurs des étapes 1 et 2.
-2. Docker en marche (le site local doit tourner), lancez :
+Le disque d'un service gratuit est effacé quand il s'endort ou redémarre : sans stockage externe, **les photos envoyées
+depuis l'administration (logo, produits, réalisations) disparaissent**. Les textes et réglages, eux, restent dans la base.
+
+1. Créez un compte gratuit sur [cloudinary.com](https://cloudinary.com) ; dans le tableau de bord, copiez la valeur
+   **API environment variable** qui commence par `cloudinary://` (sans `CLOUDINARY_URL=` devant).
+2. Render → service **ab-tech** → **Environment** → **Add Environment Variable** :
+   clé `CLOUDINARY_URL`, valeur collée → **Save, rebuild, and deploy**.
+
+## 4. Garder le site éveillé (facultatif)
+
+Un service gratuit **s'endort après 15 minutes sans visite** ; la visite suivante attend environ une minute.
+Pour que le client trouve toujours un site rapide : compte gratuit [UptimeRobot](https://uptimerobot.com) →
+**Add New Monitor** → **HTTP(s)** → URL `https://<votre-adresse>.onrender.com/api/ping` → intervalle **5 minutes**.
+(Environ 744 heures par mois sur les 750 offertes : gardez un seul service gratuit sur ce compte Render.)
+
+---
+
+## Ce qui marche en version gratuite
+
+- **Clients** : ils créent un compte avec leur e-mail et un mot de passe, puis envoient devis, commandes et avis.
+- **E-mails** : Render gratuit bloque leur envoi. « Mot de passe oublié » n'envoie pas d'e-mail ; l'administrateur
+  crée un lien de réinitialisation dans **Administration → Comptes clients** et le transmet (bouton WhatsApp).
+- **Google** : le bouton « Continuer avec Google » reste caché tant qu'il n'est pas configuré (voir plus bas).
+
+## La base de données : à savoir
+
+- Base Postgres Render gratuite : 1 Go, **expire 30 jours après sa création** ; ensuite 14 jours pour passer à une offre
+  payante, puis Render la **supprime** avec toutes ses données. La date s'affiche dans Render → **ab-tech-db** → **Info**.
+- Avant cette date : passer au vrai hébergement, ou déplacer la base vers [Neon](https://neon.com) (gratuit, sans
+  expiration) en changeant `DATABASE_URL` dans **ab-tech** → **Environment** (les données peuvent être recopiées).
+- Les adresses de connexion (**Internal / External Database URL**) sont dans **ab-tech-db** → **Info** → **Connect** :
+  ce sont des secrets, à ne jamais publier.
+
+## Reprendre le contenu du site local (facultatif)
+
+Pour retrouver en ligne le contenu de http://localhost:8080 (logo, téléphones, photos de produits, compte administrateur
+avec son mot de passe actuel, devis et avis de test) :
+
+1. Copiez `.env.cloud.example` en **`.env.cloud`** (jamais envoyé sur GitHub) et remplissez :
+   - `CLOUD_DATABASE_URL` : l'**External Database URL** de **ab-tech-db** ;
+   - `CLOUDINARY_URL` : la valeur Cloudinary (les photos locales y sont envoyées).
+2. Docker en marche (site local lancé), à la racine du projet :
 
    ```bash
-   pnpm cloud:copy
+   pnpm cloud:copy --reset
    ```
 
-   Le script vérifie d'abord les accès Cloudinary, puis copie la base dans Neon (sans les sessions ouvertes),
-   envoie les photos sur Cloudinary, remplace leurs adresses et compare le résultat. Il ne touche jamais à une base
-   en ligne déjà remplie, sauf avec `pnpm cloud:copy --reset` (qui la vide d'abord).
+   `--reset` vide d'abord la base en ligne (elle contient les exemples créés au premier démarrage), puis le script copie
+   la base locale (sans les sessions ouvertes), envoie les photos sur Cloudinary et compare le résultat.
+3. Ajoutez `CLOUDINARY_URL` au service (étape 3), puis Render → **ab-tech** → **Manual Deploy** → **Restart service**.
 
-**Partir de zéro à la place ?** Sautez cette étape : le site en ligne démarrera avec les exemples, et l'administrateur
-sera créé à partir de `ADMIN_EMAIL` / `ADMIN_PASSWORD` (mot de passe à changer à la première connexion).
+## Mises à jour
 
-> Faites cette étape **avant** l'étape 4 : au premier démarrage, le site remplit une base vide avec les exemples.
-
-## 4. Le site (Render) — 10 minutes, dont la construction
-
-1. Ouvrez [render.com](https://render.com) → **Get Started** → « Sign up with GitHub », et autorisez Render à voir
-   le dépôt **Iya2006/AB-TECH**.
-2. **New +** → **Blueprint** → choisissez le dépôt `AB-TECH`. Render affiche le service `ab-tech` décrit dans `render.yaml`.
-3. Remplissez les valeurs demandées :
-   - `DATABASE_URL` : la chaîne de connexion Neon (étape 1) ;
-   - `CLOUDINARY_URL` : la valeur Cloudinary (étape 2) ;
-   - `ADMIN_EMAIL` et `ADMIN_PASSWORD` : seulement si vous êtes parti de zéro (10 caractères minimum).
-     Après la copie de l'étape 3, laissez-les vides : votre compte administrateur existe déjà.
-4. **Apply** (ou **Deploy Blueprint**). La première construction prend 5 à 10 minutes ; suivez-la dans **Logs**.
-5. L'adresse du site s'affiche en haut de la page du service (`https://ab-tech….onrender.com`). Vérifiez :
-   l'accueil, `/connexion`, puis `/admin` avec le compte administrateur.
-
-Chaque `git push` sur la branche `main` redéploie ensuite le site automatiquement (environ 5 minutes).
-
-## 5. Garder le site éveillé (facultatif, conseillé pour la démo)
-
-Un service Render gratuit **s'endort après 15 minutes sans visite** ; la visite suivante attend environ une minute
-pendant qu'il se réveille. Pour que le client trouve toujours un site rapide :
-
-1. Créez un compte gratuit sur [UptimeRobot](https://uptimerobot.com).
-2. **Add New Monitor** → type **HTTP(s)** → URL : `https://<votre-adresse>.onrender.com/api/ping` → intervalle **5 minutes**.
-
-`/api/ping` répond sans interroger la base : la base Neon peut continuer à s'endormir et économiser ses heures gratuites.
-Le service consomme alors environ 744 heures par mois sur les 750 offertes par Render : gardez un seul service gratuit
-sur ce compte Render.
-
----
-
-## Ce que permet l'offre gratuite (à dire au client)
-
-- **Render** : 512 Mo de mémoire, 750 heures par mois, réveil d'environ une minute sans l'étape 5.
-  Les envois d'e-mails (SMTP) sont **bloqués** : « Mot de passe oublié » ne peut pas envoyer d'e-mail ;
-  l'administrateur crée un lien de réinitialisation depuis **Administration → Comptes clients** et le transmet par WhatsApp.
-- **Neon** : 1 Go de données, 100 heures de calcul par mois, mise en veille après 5 minutes (réveil en moins d'une seconde).
-- **Cloudinary** : 25 crédits par mois (environ 20 Go de photos ou 25 Go de bande passante).
-
-Pour la vraie mise en service (nom de domaine, e-mails, pas de mise en veille) : un service Render payant
-(quelques dollars par mois, même `render.yaml` avec un autre `plan`), ou un serveur (VPS) avec Docker :
-`docker compose up -d --build` (voir README).
+Chaque `git push` sur la branche `main` redéploie automatiquement le site (environ 5 minutes). La base n'est pas touchée.
 
 ## Connexion avec Google (plus tard)
 
-Dans la console Google Cloud, déclarez l'adresse de redirection `https://<votre-adresse>.onrender.com/api/auth/google/callback`,
-puis ajoutez `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans Render (service → **Environment**). L'adresse exacte
-s'affiche aussi dans **Administration → Paramètres → Connexion des clients**.
+Dans la console Google Cloud, déclarez l'adresse de redirection
+`https://<votre-adresse>.onrender.com/api/auth/google/callback`, puis ajoutez `GOOGLE_CLIENT_ID` et
+`GOOGLE_CLIENT_SECRET` dans **ab-tech** → **Environment**. L'adresse exacte s'affiche aussi dans
+**Administration → Paramètres → Connexion des clients**.
 
 ## En cas de problème
 
 | Symptôme | Cause probable |
 | --- | --- |
-| La construction échoue | voir **Logs** sur Render ; la même commande se lance en local : `pnpm run build:render` |
-| « Configuration invalide » au démarrage | une valeur manque ou est mal copiée (`DATABASE_URL`, `ADMIN_PASSWORD` de moins de 10 caractères) |
-| Les photos envoyées disparaissent | `CLOUDINARY_URL` absent : le service stocke alors sur son disque, effacé au redémarrage |
-| Première page très lente | le service se réveillait : voir l'étape 5 |
+| La construction échoue | **Logs** du service ; la même commande se lance en local : `pnpm run build:render` |
+| « Configuration invalide » au démarrage | `ADMIN_PASSWORD` de moins de 10 caractères, ou `ADMIN_EMAIL` mal écrit : corrigez dans **Environment** |
+| Impossible de se connecter à `/admin` | mauvais e-mail ou mot de passe provisoire ; l'administrateur n'est créé que si la base est vide |
+| Les photos envoyées disparaissent | `CLOUDINARY_URL` absent (étape 3) |
+| Première page très lente | le service se réveillait (étape 4) |
+
+Pour la vraie mise en service (nom de domaine, e-mails, pas de mise en veille, sauvegardes) : offres payantes Render
+(même `render.yaml` avec un autre `plan`), ou un serveur (VPS) avec Docker : `docker compose up -d --build` (voir README).

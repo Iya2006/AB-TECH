@@ -1,20 +1,30 @@
-# Déploiement sur Render (offre gratuite), en un seul service : l'API sert aussi le site construit.
-# Site et API à la même adresse (https://….onrender.com) : cookies de session simples, aucun CORS.
-#   Base de données : Neon (Postgres gratuit, sans date d'expiration) → DATABASE_URL
-#   Photos envoyées depuis l'administration : Cloudinary (gratuit) → CLOUDINARY_URL
-#     (le disque d'un service gratuit Render est effacé à chaque redémarrage)
+# Déploiement sur Render (offre gratuite) : la base de données ET le site, créés et reliés automatiquement.
+# Un seul service web : l'API sert aussi le site construit (même adresse : cookies de session simples, aucun CORS).
+#   Base Postgres Render gratuite : 1 Go, EXPIRE 30 JOURS APRÈS SA CRÉATION (supprimée 14 jours plus tard
+#   sans passage à une offre payante). Pour un essai. Au-delà : Neon (gratuit, sans expiration) ou hébergement payant.
+#   Photos envoyées depuis l'administration : ajouter CLOUDINARY_URL (service → Environment) pour qu'elles restent ;
+#   sans lui, elles sont effacées quand le service gratuit s'endort ou redémarre.
 # Mode d'emploi pas à pas : DEPLOIEMENT.md
+databases:
+  - name: ab-tech-db
+    plan: free
+    region: frankfurt
+    databaseName: abtech
+    user: abtech
+    # même version que le site local (Docker) : la copie du contenu local reste possible
+    postgresMajorVersion: "17"
+
 services:
   - type: web
     name: ab-tech
     runtime: node
     plan: free
-    # le plus proche de l'Afrique de l'Ouest parmi les régions Render
+    # la plus proche de l'Afrique de l'Ouest parmi les régions Render (la même que la base)
     region: frankfurt
     # dépendances de développement installées pour la construction (Vite, TypeScript, tsup), puis :
     # site (vérification des types + Vite) → API (tsup) → fichiers précompressés (Brotli, gzip)
     buildCommand: NODE_ENV=development npx --yes pnpm@10.20.0 install --frozen-lockfile && npx --yes pnpm@10.20.0 run build:render
-    # lancé depuis apps/api : migrations (./drizzle) puis serveur ; le site construit est dans ../web/dist
+    # lancé depuis apps/api : attente de la base, migrations (./drizzle), puis serveur ; le site construit est dans ../web/dist
     startCommand: cd apps/api && NODE_ENV=production node dist/index.js
     healthCheckPath: /api/ping
     autoDeployTrigger: commit
@@ -26,12 +36,13 @@ services:
       # clé de signature des sessions et des liens : générée par Render
       - key: SESSION_SECRET
         generateValue: true
-      # à renseigner à la création (voir DEPLOIEMENT.md)
+      # adresse de la base Render (réseau privé), reliée automatiquement
       - key: DATABASE_URL
-        sync: false
-      - key: CLOUDINARY_URL
-        sync: false
-      # administrateur initial, seulement si la base en ligne part de zéro (sinon : laisser vide)
+        fromDatabase:
+          name: ab-tech-db
+          property: connectionString
+      # administrateur créé au premier démarrage (base vide) ; mot de passe de 10 caractères minimum,
+      # à remplacer à la première connexion
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD

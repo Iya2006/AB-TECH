@@ -20,6 +20,25 @@ export function createDb(databaseUrl: string) {
 
 export type Db = ReturnType<typeof createDb>['db']
 
+/**
+ * Attend que la base réponde (jusqu'à 5 minutes) : au premier déploiement, la base peut être encore en création ;
+ * une base « serverless » peut aussi mettre quelques secondes à se réveiller.
+ */
+export async function waitForDatabase(sql: ReturnType<typeof createDb>['sql'], maxMs = 5 * 60_000) {
+  const start = Date.now()
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await sql`select 1`
+      if (attempt > 1) console.log('Base de données joignable.')
+      return
+    } catch (err) {
+      if (Date.now() - start > maxMs) throw err
+      console.warn(`Base de données pas encore joignable (essai ${attempt}) : nouvel essai dans 5 s…`)
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+    }
+  }
+}
+
 export async function runMigrations(db: Db) {
   await migrate(db, { migrationsFolder: path.resolve(process.cwd(), 'drizzle') })
 }

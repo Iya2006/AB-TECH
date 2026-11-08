@@ -106,9 +106,10 @@ automatiques). Sans Cloudinary, elles sont stockées dans le volume Docker `uplo
 
 ## Mettre en ligne
 
-**Gratuitement, pour une démonstration** : Render (site + API en un seul service) + Neon (base de données) + Cloudinary
-(photos envoyées). Mode d'emploi pas à pas : [DEPLOIEMENT.md](DEPLOIEMENT.md). Le service est décrit dans
-[`render.yaml`](render.yaml) ; `pnpm cloud:copy` reprend le contenu du site local (base et photos).
+**Gratuitement, pour un essai** : Render crée la base Postgres et le site (site + API en un seul service), reliés
+automatiquement ; Cloudinary (facultatif) garde les photos envoyées. Mode d'emploi pas à pas : [DEPLOIEMENT.md](DEPLOIEMENT.md).
+Tout est décrit dans [`render.yaml`](render.yaml) ; `pnpm cloud:copy` reprend le contenu du site local (base et photos).
+La base gratuite de Render expire au bout de 30 jours : au-delà, Neon (gratuit) ou un hébergement payant.
 L'API sert alors aussi le site construit (`WEB_DIST`), avec des fichiers précompressés (`tools/precompress.mjs`).
 
 Sur un serveur (VPS) avec Docker :

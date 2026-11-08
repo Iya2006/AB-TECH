@@ -1,12 +1,13 @@
 import { purgeExpired } from './accounts'
 import { buildApp } from './app'
-import { createDb, runMigrations } from './db/client'
+import { createDb, runMigrations, waitForDatabase } from './db/client'
 import { seedAll } from './db/seed'
 import { loadEnv } from './env'
 
 const env = loadEnv()
 const { db, sql } = createDb(env.DATABASE_URL)
 
+await waitForDatabase(sql)
 await runMigrations(db)
 await seedAll(db, { email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD })
 await purgeExpired(db)
