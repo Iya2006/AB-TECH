@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { BRAND } from '../config/brand'
 import { drawMark, FONT } from '../lib/print'
+import { CANVAS_SCALE } from './mobileTextures'
 
 export { drawMark, drawPrint, FONT, type PrintImage } from '../lib/print'
 
@@ -41,9 +42,12 @@ export function toTexture(canvas: HTMLCanvasElement) {
   return tex
 }
 
+/** Dessinée en `w × h` (unités du dessin) ; en demi-résolution sur les appareils modestes (voir mobileTextures). */
 export function canvasTexture(w: number, h: number, draw: Draw) {
-  const canvas = createCanvas(w, h)
-  draw(canvas.getContext('2d')!, w, h)
+  const canvas = createCanvas(Math.max(1, Math.round(w * CANVAS_SCALE)), Math.max(1, Math.round(h * CANVAS_SCALE)))
+  const ctx = canvas.getContext('2d')!
+  if (CANVAS_SCALE !== 1) ctx.scale(CANVAS_SCALE, CANVAS_SCALE)
+  draw(ctx, w, h)
   return toTexture(canvas)
 }
 

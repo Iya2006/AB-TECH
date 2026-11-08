@@ -15,6 +15,10 @@ export function detectQuality(): Quality {
   const { renderer } = probeGpu()
   // rendu logiciel (pas de carte graphique utilisable) : le strict minimum
   if (/swiftshader|llvmpipe|software|basic render/i.test(renderer)) return 'low'
+  // iPhone et iPad (y compris un iPad qui se présente comme un Mac) : Safari y ferme l'onglet au-delà
+  // d'une mémoire assez basse, quelle que soit la puissance de l'appareil
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (ios) return 'low'
   // téléphones et tablettes : qualité basse sauf appareil nettement puissant (la baisse automatique veille ensuite)
   if (coarse && (memory < 6 || cores < 8)) return 'low'
   if (coarse || memory <= 4 || cores <= 4) return 'medium'

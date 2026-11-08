@@ -13,6 +13,8 @@ import { journey } from '../lib/scroll'
 import { useApp, type Mood } from '../lib/store'
 import { outsideHdri, preloadFirstView, preloadRest } from './assets'
 import { buildInteriorEnvironment } from './interiorEnv'
+// (avant preloadFirstView : sur téléphone, les textures allégées sont demandées dès le premier téléchargement)
+import { LIGHT_TEXTURES } from './mobileTextures'
 import { CreationStation, EvenementielStation, ImpressionStation, ObjetsStation, TextileStation } from './stations/Atelier'
 import { InformatiqueStation, SecuriteStation } from './stations/TechStations'
 import { TextureWarmup } from './textureQueue'
@@ -590,8 +592,12 @@ export const JourneyScene = memo(function JourneyScene({ active, onLoaded }: { a
       frameloop={active ? 'always' : 'never'}
       gl={{ antialias: quality === 'low', powerPreference: 'high-performance', toneMapping: THREE.NeutralToneMapping }}
       camera={{ fov: 45, near: 0.05, far: 600, position: [0, 4.6, 21] }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
         performance.mark('3d:canvas')
+        // mesures (?perf) : inventaire de la mémoire graphique
+        if (new URLSearchParams(location.search).has('perf')) Object.assign(window, { __three: { gl, scene } })
+        // appareils modestes : aucune texture au-delà de 1 024 px sur la carte graphique (Three.js réduit au besoin)
+        if (LIGHT_TEXTURES) gl.capabilities.maxTextureSize = Math.min(gl.capabilities.maxTextureSize, 1024)
         // en production, pas de lecture des journaux de compilation (allers-retours avec la carte graphique)
         gl.debug.checkShaderErrors = import.meta.env.DEV
         watch(gl)

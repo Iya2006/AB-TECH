@@ -2,6 +2,7 @@ import { useEnvironment, useGLTF, useTexture } from '@react-three/drei'
 import { useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 import type { Mood } from '../lib/store'
+import { CANVAS_SCALE } from './mobileTextures'
 import { plainGlass } from './precompile'
 import { loadBitmap, makeBitmapTexture, makeTexture } from './textureQueue'
 
@@ -113,8 +114,8 @@ export function useLazyTexture(url: string | null | undefined, max = 1024) {
       return
     }
     let cancelled = false
-    // décodée et réduite hors du fil principal
-    loadBitmap(url, max)
+    // décodée et réduite hors du fil principal (moitié moins sur un appareil modeste : écran plus petit)
+    loadBitmap(url, Math.round(max * CANVAS_SCALE))
       .then((bitmap) => (cancelled ? bitmap.close() : setTex(makeBitmapTexture(bitmap))))
       .catch(() => !cancelled && setTex(null))
     return () => {
@@ -146,17 +147,20 @@ export function useFittedTexture(url: string | null | undefined, w: number, h: n
       return
     }
     let cancelled = false
+    // en demi-résolution sur un appareil modeste (voir mobileTextures)
+    const cw = Math.max(1, Math.round(w * CANVAS_SCALE))
+    const ch = Math.max(1, Math.round(h * CANVAS_SCALE))
     // décodée hors du fil principal : la dessiner dans le canvas ne coûte plus rien
-    loadBitmap(url, Math.max(w, h), false)
+    loadBitmap(url, Math.max(cw, ch), false)
       .then((img) => {
         if (cancelled) return img.close()
         const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
+        canvas.width = cw
+        canvas.height = ch
         const ctx = canvas.getContext('2d')!
         ctx.fillStyle = background
-        ctx.fillRect(0, 0, w, h)
-        fitImage(ctx, img, w, h, fit)
+        ctx.fillRect(0, 0, cw, ch)
+        fitImage(ctx, img, cw, ch, fit)
         img.close()
         setTex(makeTexture(canvas))
       })

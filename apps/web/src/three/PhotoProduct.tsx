@@ -10,6 +10,7 @@ import { loadBase, renderMockup } from '../lib/mockup/engine'
 import { useApp } from '../lib/store'
 import { thumbUrl } from '../ui/img'
 import type { GroupProps } from './models/products'
+import { LIGHT_TEXTURES } from './mobileTextures'
 import { downscale, loadBitmap, loadImage, makeBitmapTexture, makeTexture } from './textureQueue'
 import { Warm } from './Warm'
 
@@ -27,8 +28,8 @@ export interface PhotoTexture {
   hanger: boolean
 }
 
-/** Taille des photos dans la scène : une photo produit fait ~200 px à l'écran. */
-const PHOTO_MAX = 512
+/** Taille des photos dans la scène : une photo produit fait ~200 px à l'écran (moins sur un téléphone). */
+const PHOTO_MAX = LIGHT_TEXTURES ? 320 : 512
 
 /**
  * Vrai si les bords de l'image sont transparents (photo détourée). Lu sur l'image décodée (en mémoire) :
