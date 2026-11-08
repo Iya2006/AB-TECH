@@ -1,0 +1,36 @@
+node_modules
+dist
+*.log
+.DS_Store
+
+# Secrets : jamais dans le dépôt
+.env
+.env.local
+.env.*.local
+# accès à la base en ligne et à Cloudinary (copie du site local, voir DEPLOIEMENT.md)
+.env.cloud
+
+# Fichiers envoyés depuis l'administration (serveur local)
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
+
+# Documents du client déposés à la racine (photos, vidéos, notes) : privés
+/*.mp4
+/*.mov
+/*.jpeg
+/*.jpg
+/*.png
+/*.tx
+/*.txt
+/*.pdf
+/*.docx
+
+# Modèles 3D d'origine (Poly Haven) : retéléchargés par `node tools/optimize-3d/fetch.mjs`
+tools/optimize-3d/src/
+
+# Photos de travail du Studio (sources et étapes intermédiaires)
+tools/studio-assets/orig
+tools/studio-assets/alpha
+tools/studio-assets/cloth
+tools/studio-assets/out
+tools/studio-assets/models

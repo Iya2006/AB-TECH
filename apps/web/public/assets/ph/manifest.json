@@ -1,0 +1,57 @@
+{
+  "hdri": {
+    "decor_shop": "hdri/decor_shop.hdr",
+    "hausdorf_clear_sky": "hdri/hausdorf_clear_sky.hdr",
+    "cobblestone_street_night": "hdri/cobblestone_street_night.hdr"
+  },
+  "textures": {
+    "floor": {
+      "id": "concrete_floor_painted",
+      "diff": "tex/floor/diff.jpg",
+      "nor": "tex/floor/nor.jpg",
+      "rough": "tex/floor/rough.jpg"
+    },
+    "facade": {
+      "id": "concrete_tile_facade",
+      "diff": "tex/facade/diff.jpg",
+      "nor": "tex/facade/nor.jpg",
+      "rough": "tex/facade/rough.jpg"
+    },
+    "asphalt": {
+      "id": "asphalt_02",
+      "diff": "tex/asphalt/diff.jpg",
+      "nor": "tex/asphalt/nor.jpg",
+      "rough": "tex/asphalt/rough.jpg"
+    },
+    "pavement": {
+      "id": "concrete_pavement_02",
+      "diff": "tex/pavement/diff.jpg",
+      "nor": "tex/pavement/nor.jpg",
+      "rough": "tex/pavement/rough.jpg"
+    },
+    "wood": {
+      "id": "oak_veneer_01",
+      "diff": "tex/wood/diff.jpg",
+      "nor": "tex/wood/nor.jpg",
+      "rough": "tex/wood/rough.jpg"
+    },
+    "plaster": {
+      "id": "white_plaster_rough_01",
+      "diff": "tex/plaster/diff.jpg",
+      "nor": "tex/plaster/nor.jpg",
+      "rough": "tex/plaster/rough.jpg"
+    }
+  },
+  "models": {
+    "classic_laptop": "models/classic_laptop/classic_laptop.gltf",
+    "security_camera_01": "models/security_camera_01/security_camera_01.gltf",
+    "security_camera_02": "models/security_camera_02/security_camera_02.gltf",
+    "korean_fire_extinguisher_01": "models/korean_fire_extinguisher_01/korean_fire_extinguisher_01.gltf",
+    "potted_plant_02": "models/potted_plant_02/potted_plant_02.gltf",
+    "desk_lamp_arm_01": "models/desk_lamp_arm_01/desk_lamp_arm_01.gltf",
+    "steel_frame_shelves_02": "models/steel_frame_shelves_02/steel_frame_shelves_02.gltf",
+    "street_lamp_01": "models/street_lamp_01/street_lamp_01.gltf",
+    "wooden_display_shelves_01": "models/wooden_display_shelves_01/wooden_display_shelves_01.gltf",
+    "modern_ceiling_lamp_01": "models/modern_ceiling_lamp_01/modern_ceiling_lamp_01.gltf"
+  }
+}

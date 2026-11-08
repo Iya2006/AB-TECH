@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+.env
+.env.*
+!.env.example
+.git
+apps/api/uploads
+*.mp4
+*.jpeg
+*.tx
+tools

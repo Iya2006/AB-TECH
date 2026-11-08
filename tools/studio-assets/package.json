@@ -1,0 +1,15 @@
+{
+  "name": "studio-assets",
+  "private": true,
+  "type": "module",
+  "description": "Préparation hors ligne des photos du Studio et du catalogue de démo (détourage, masques, couleurs).",
+  "scripts": {
+    "fetch": "node fetch.mjs",
+    "seg": "node seg.mjs",
+    "build": "node build.mjs && node gen-bases.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.7.5",
+    "sharp": "0.34.4"
+  }
+}

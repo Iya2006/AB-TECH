@@ -1,0 +1,39 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
+    "media:upload": "tsx --env-file-if-exists=../../.env scripts/upload-media.ts",
+    "cloud:copy": "tsx --env-file=../../.env.cloud scripts/copy-to-cloud.ts"
+  },
+  "dependencies": {
+    "@atelier/shared": "workspace:*",
+    "@fastify/cors": "^11.4.0",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/multipart": "^10.1.7",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/static": "^10.1.8",
+    "cloudinary": "^2.11.0",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "nodemailer": "^7.0.13",
+    "postgres": "^4.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "drizzle-kit": "^0.31.11",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

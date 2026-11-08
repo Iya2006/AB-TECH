@@ -1,0 +1,534 @@
+@import 'tailwindcss';
+
+/* Le site est en thème clair : `dark:` ne s'active qu'avec la classe .dark (jamais selon le réglage du système). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Équivalent minimal de tw-animate-css (`animate-in fade-in`) utilisé par les composants shadcn. */
+@utility animate-in {
+  animation: shadcn-enter 0.3s ease both;
+}
+@utility fade-in {
+  --tw-enter-opacity: 0;
+}
+@keyframes shadcn-enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+  }
+}
+
+/*
+ * Design system AB-TECH — moderne, net, très lisible :
+ * blancs froids, bleu nuit, accent bleu électrique ; les couleurs process (cyan, magenta, jaune)
+ * restent des clins d'œil au métier de l'imprimeur.
+ */
+@theme {
+  --color-paper: #f6f8fc;
+  --color-paper-2: #e9eef6;
+  --color-ink: #0a1020;
+  --color-ink-2: #111a2e;
+  --color-ink-3: #1b2640;
+  --color-graphite: #5b6478;
+  --color-line: #dbe3ee;
+  --color-cyan: #00a0dc;
+  --color-magenta: #e5007d;
+  --color-yellow: #ffd400;
+  /* Accent de la marque AB-TECH : bleu électrique, dégradé vers le cyan */
+  --color-accent: #2563eb;
+  --color-accent-2: #22b8f0;
+  --color-accent-soft: #e0ebff;
+
+  /* Jetons « shadcn » (composants de components/ui), reliés à la palette AB-TECH */
+  --color-background: #f6f8fc;
+  --color-foreground: #0a1020;
+  --color-card: #ffffff;
+  --color-card-foreground: #0a1020;
+  --color-muted: #e9eef6;
+  --color-muted-foreground: #5b6478;
+  --color-border: #dbe3ee;
+  --color-ring: #2563eb;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+
+  /* Titres : police d'affichage géométrique ; texte courant : Inter Tight */
+  --font-display: 'Plus Jakarta Sans Variable', 'Inter Tight Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Tight Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-quart: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+/* Marquee (components/ui/marquee) : `animate-marquee`, `animate-marquee-vertical`.
+   `inline` : var(--duration) se lit sur l'élément animé, pas sur :root où il n'existe pas.
+   Images clés renommées : `marquee` sert déjà au bandeau de l'accueil. */
+@theme inline {
+  --animate-marquee: marquee-x var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-y var(--duration) linear infinite;
+  @keyframes marquee-x {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+  @keyframes marquee-y {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-100% - var(--gap)));
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    overflow-x: clip;
+  }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-paper);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  /* Repères de coupe aux quatre coins, comme sur une épreuve d'impression. */
+  .crop {
+    --crop-color: currentColor;
+    --crop-len: 14px;
+    --crop-gap: -10px;
+    position: relative;
+  }
+  .crop::before,
+  .crop::after {
+    content: '';
+    position: absolute;
+    inset: var(--crop-gap);
+    pointer-events: none;
+    opacity: 0.55;
+    background:
+      linear-gradient(var(--crop-color), var(--crop-color)) top left / var(--crop-len) 1px no-repeat,
+      linear-gradient(var(--crop-color), var(--crop-color)) top left / 1px var(--crop-len) no-repeat,
+      linear-gradient(var(--crop-color), var(--crop-color)) top right / var(--crop-len) 1px no-repeat,
+      linear-gradient(var(--crop-color), var(--crop-color)) top right / 1px var(--crop-len) no-repeat;
+  }
+  .crop::after {
+    transform: rotate(180deg);
+  }
+
+  /* Gamme de contrôle CMJN. */
+  .colorbar {
+    background: linear-gradient(
+      90deg,
+      var(--color-cyan) 0 25%,
+      var(--color-magenta) 25% 50%,
+      var(--color-yellow) 50% 75%,
+      var(--color-ink) 75% 100%
+    );
+  }
+
+  /* Titres : gras, serrés, et la partie mise en valeur passe en dégradé de la marque (plus d'italique). */
+  .font-display {
+    font-weight: 750;
+    letter-spacing: -0.035em;
+  }
+  .font-display em,
+  .accent-text {
+    font-style: normal;
+    background: linear-gradient(100deg, var(--color-accent) 10%, var(--color-accent-2) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Petits libellés : lisibles avant tout (sans-serif, 12 px, demi-gras). */
+  .kicker {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    height: 48px;
+    padding: 0 1.4rem;
+    border-radius: 999px;
+    font-weight: 560;
+    font-size: 15px;
+    letter-spacing: -0.005em;
+    transition:
+      transform 0.4s var(--ease-expo),
+      background-color 0.3s,
+      color 0.3s,
+      border-color 0.3s;
+    will-change: transform;
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  .btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+  .btn-ink {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+  .btn-ink:hover {
+    background: var(--color-accent);
+  }
+  .btn-paper {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+  .btn-paper:hover {
+    background: var(--color-yellow);
+  }
+  .btn-ghost {
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  }
+  .btn-ghost:hover {
+    border-color: currentColor;
+  }
+
+  /* Révélation mot à mot des titres (déclenchée par .is-active sur un parent). */
+  .split-line {
+    display: block;
+    overflow: hidden;
+    padding-bottom: 0.08em;
+    margin-bottom: -0.08em;
+  }
+  .split-word {
+    display: inline-block;
+    transform: translateY(105%);
+    transition: transform 0.55s var(--ease-expo);
+    transition-delay: calc(var(--i, 0) * 30ms);
+  }
+  .is-active .split-word,
+  .is-revealed .split-word {
+    transform: translateY(0);
+  }
+
+  .fade-up {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 0.45s var(--ease-expo),
+      transform 0.45s var(--ease-expo);
+    /* les délais d'apparition sont écourtés : le contenu suit le défilement sans attendre */
+    transition-delay: calc(var(--d, 0ms) * 0.45);
+  }
+  .is-active .fade-up,
+  .is-revealed .fade-up {
+    opacity: 1;
+    transform: none;
+  }
+
+  .field {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    padding: 0.85rem 0;
+    font-size: 16px;
+    color: inherit;
+    transition: border-color 0.3s;
+  }
+  .field::placeholder {
+    color: color-mix(in srgb, currentColor 38%, transparent);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-accent);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  }
+}
+
+/* Bandeau défilant (savoir-faire) */
+.marquee {
+  animation: marquee 42s linear infinite;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Ouverture des fenêtres (galerie, fiche produit, panier) */
+.overlay-enter {
+  animation: overlay-in 0.5s var(--ease-expo) both;
+}
+.panel-enter {
+  animation: panel-in 0.7s var(--ease-expo) both;
+}
+.drawer-enter {
+  animation: drawer-in 0.6s var(--ease-expo) both;
+}
+.image-enter {
+  animation: image-in 0.75s var(--ease-expo) both;
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.96);
+    filter: blur(6px);
+  }
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes image-in {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(10px);
+  }
+}
+
+/* Commandes posées dans la scène 3D */
+.tag-enter {
+  animation: tag-in 0.45s var(--ease-expo) both;
+}
+@keyframes tag-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+}
+
+/* Étiquette suspendue à un fil, qui se balance (atelier 3D) */
+.hang-tag {
+  position: relative;
+  transform: translateX(-50%);
+  transform-origin: 50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation:
+    hang-drop 0.6s var(--ease-expo) both,
+    hang-swing 3.6s ease-in-out 0.6s infinite alternate;
+}
+.hang-string {
+  width: 1.5px;
+  height: 18px;
+  background: linear-gradient(#94a3b8, #cbd5e1);
+}
+.hang-string::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+.hang-card {
+  pointer-events: auto;
+  position: relative;
+  width: 118px;
+  padding: 15px 11px 9px;
+  border-radius: 6px 6px 14px 14px;
+  background: linear-gradient(160deg, #13203b, #0a1020 70%);
+  box-shadow:
+    0 14px 30px -14px rgba(10, 16, 32, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  text-align: left;
+  transition: transform 0.3s var(--ease-expo);
+}
+.hang-card:hover {
+  transform: scale(1.06);
+}
+.hang-eyelet {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 999px;
+  background: #e4ebf5;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+@keyframes hang-drop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-14px) rotate(-6deg);
+  }
+}
+@keyframes hang-swing {
+  from {
+    transform: translateX(-50%) rotate(-2.5deg);
+  }
+  to {
+    transform: translateX(-50%) rotate(2.5deg);
+  }
+}
+
+/* Espace pro : pages (fondu seul) et sections (légère montée) qui entrent en douceur */
+.admin-page {
+  animation: admin-page 0.45s ease both;
+}
+@keyframes admin-page {
+  from {
+    opacity: 0;
+  }
+}
+.admin-enter {
+  animation: admin-enter 0.6s var(--ease-expo) backwards;
+}
+@keyframes admin-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Boutique : cartes qui réapparaissent en cascade au changement de rayon */
+.shop-enter {
+  animation: shop-enter 0.7s var(--ease-expo) both;
+}
+@keyframes shop-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+}
+
+/* Notre méthode : illustrations tracées au trait, tampon « BAT » et feuille qui sort de la presse */
+.method-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: method-draw 1.1s var(--ease-expo) forwards;
+}
+@keyframes method-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.method-stamp {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: method-stamp 0.5s 0.7s var(--ease-expo) both;
+}
+@keyframes method-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+.method-sheet {
+  animation: method-sheet 1.4s 0.5s var(--ease-expo) both;
+}
+@keyframes method-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+}
+
+/* Connexion et compte : passage d'un formulaire à l'autre, façade qui respire, points qui montent */
+.auth-swap {
+  animation: auth-swap 0.5s var(--ease-expo) both;
+}
+@keyframes auth-swap {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.auth-rise {
+  animation: auth-swap 0.8s var(--ease-expo) both;
+}
+.auth-kenburns {
+  animation: auth-kenburns 24s ease-in-out infinite alternate;
+}
+@keyframes auth-kenburns {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1.1) translate(-1.5%, -1%);
+  }
+}
+/* Menu du compte (barre du site) */
+.menu-pop {
+  transform-origin: top right;
+  animation: menu-pop 0.28s var(--ease-expo) both;
+}
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-swap,
+  .auth-rise,
+  .auth-kenburns,
+  .menu-pop,
+  .method-draw,
+  .method-stamp,
+  .method-sheet,
+  .shop-enter,
+  .admin-enter,
+  .admin-page,
+  .marquee,
+  .overlay-enter,
+  .panel-enter,
+  .drawer-enter,
+  .image-enter,
+  .tag-enter,
+  .hang-tag {
+    animation: none !important;
+  }
+  /* Marquee à l'arrêt : on fait défiler les cartes soi-même */
+  [data-slot='marquee'] {
+    overflow-x: auto;
+  }
+  [data-slot='marquee'] > * {
+    animation: none !important;
+  }
+  .split-word,
+  .fade-up {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+  .method-draw {
+    stroke-dashoffset: 0;
+  }
+}

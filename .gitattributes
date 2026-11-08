@@ -1,0 +1,12 @@
+# Fins de ligne normalisées (LF dans le dépôt) ; ressources 3D et images jamais modifiées
+* text=auto
+*.glb binary
+*.gltf binary
+*.bin binary
+*.hdr binary
+*.ktx2 binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.woff2 binary
