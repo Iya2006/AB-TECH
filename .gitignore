@@ -34,3 +34,9 @@ tools/studio-assets/alpha
 tools/studio-assets/cloth
 tools/studio-assets/out
 tools/studio-assets/models
+
+# Modèles 3D des produits : étapes intermédiaires (simulations Blender, exports bruts)
+tools/models-3d/cache
+tools/models-3d/out
+
+__pycache__

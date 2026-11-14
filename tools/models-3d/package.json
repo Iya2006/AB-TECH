@@ -1,0 +1,17 @@
+{
+  "name": "models-3d",
+  "private": true,
+  "type": "module",
+  "description": "Fabrication hors ligne des modèles 3D des produits (Blender) et allègement pour le site.",
+  "scripts": {
+    "garments": "blender -b -P build_garments.py --",
+    "textures": "python3 fabric_textures.py",
+    "pack": "node pack.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "4.2.1",
+    "@gltf-transform/extensions": "4.2.1",
+    "@gltf-transform/functions": "4.2.1",
+    "meshoptimizer": "0.25.0"
+  }
+}

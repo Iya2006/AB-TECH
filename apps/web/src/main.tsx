@@ -19,11 +19,14 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('perf')) Obj
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 const AuthApp = lazy(() => import('./auth/AuthApp'))
 const AccountApp = lazy(() => import('./account/AccountApp'))
+// banc d'essai des modèles 3D : en développement seulement (absent du site construit)
+const Lab3D = import.meta.env.DEV ? lazy(() => import('./lab/Lab3D')) : null
 
 const path = window.location.pathname.replace(/\/+$/, '') || '/'
 const AUTH_PAGES = ['/connexion', '/inscription', '/mot-de-passe-oublie', '/reinitialiser']
 
 function Root() {
+  if (Lab3D && path === '/labo') return <Lab3D />
   if (path.startsWith('/admin')) return <AdminApp />
   if (AUTH_PAGES.includes(path)) return <AuthApp />
   if (path === '/compte' || path.startsWith('/compte/')) return <AccountApp />
