@@ -6,7 +6,8 @@ import { useApp } from '../../lib/store'
 import { usePbr } from '../assets'
 import { G, M, PALETTE } from '../materials'
 import { concreteTexture, stationSignTexture, techSignTexture } from '../textures'
-import { ceilingTileTexture, wallPanelTexture } from './interiorTextures'
+import { ceilingTileTexture, floorOcclusionTexture, wallOcclusionTexture, wallPanelTexture } from './interiorTextures'
+import { STATION_FOOTPRINTS } from './layout'
 
 export const HALL = {
   halfWidth: 10,
@@ -157,7 +158,7 @@ function StationSigns() {
   )
 }
 
-const aisleMat = new THREE.MeshStandardMaterial({ color: '#dfe6ef', roughness: 0.28, metalness: 0.05 })
+const aisleMat = new THREE.MeshStandardMaterial({ color: '#c9d0da', roughness: 0.24, metalness: 0.05 })
 
 /** Murs d'accent en lames de chêne derrière plusieurs postes (une seule instance : 1 appel de dessin). */
 const SLAT_WALLS: Array<{ side: -1 | 1; z0: number; z1: number }> = [
@@ -197,15 +198,18 @@ export function Hall() {
     map.wrapS = map.wrapT = THREE.RepeatWrapping
     map.repeat.set(5, 18)
     map.needsUpdate = true
-    // béton ciré satiné : il renvoie la lumière des dalles du plafond (rendu « boutique moderne »)
+    // béton ciré gris moyen, satiné : les meubles clairs s'en détachent et il renvoie les dalles du plafond.
+    // L'occlusion peinte (pied des murs, dessous des postes) pose l'ensemble au sol sans calcul à l'affichage.
     return new THREE.MeshStandardMaterial({
       map,
       normalMap: floor.normalMap,
       normalScale: new THREE.Vector2(0.2, 0.2),
       roughnessMap: floor.roughnessMap,
-      color: '#eef2f7',
-      roughness: 0.36,
-      metalness: 0.04,
+      aoMap: floorOcclusionTexture({ halfWidth: HALL.halfWidth, end: HALL.end, techStart: HALL.techStart, columns: COLUMNS_Z, footprints: STATION_FOOTPRINTS }),
+      aoMapIntensity: 1,
+      color: '#aeb5bf',
+      roughness: 0.3,
+      metalness: 0.06,
     })
   }, [floor])
   // murs en grands panneaux (joints tous les 1,2 m), relief d'enduit des textures téléchargées
@@ -217,6 +221,7 @@ export function Hall() {
             map: wallPanelTexture(span / 2.4, 1),
             normalMap: walls.normalMap,
             normalScale: new THREE.Vector2(0.35, 0.35),
+            aoMap: wallOcclusionTexture(),
             color: PALETTE.wall,
             roughness: 0.9,
           }),

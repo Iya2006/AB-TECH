@@ -68,7 +68,7 @@ export default function Lab3D() {
         <color attach="background" args={['#e9edf2']} />
         <StudioLights />
         <Suspense fallback={null}>
-          <Product3D model={model} color={color} front={q.get('side') === 'back' ? null : print} back={q.get('side') === 'back' ? print : null} />
+          <Product3D model={model} color={color} front={q.get('side') === 'back' ? null : print} back={q.get('side') === 'back' ? print : null} lod={q.has('lod')} />
         </Suspense>
         <ContactShadows position={[0, -0.12, 0]} scale={2.4} blur={2.6} far={1.2} opacity={0.32} />
         {q.get('dbg') && <Debug mode={q.get('dbg')!} />}

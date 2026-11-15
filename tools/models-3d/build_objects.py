@@ -114,22 +114,7 @@ def finish(name, bm, materials, face_material=None):
     return obj
 
 
-def bake_vertex_ao(objs, samples=96, distance=0.12):
-    """Occlusion ambiante rangée dans les sommets (couleur « Col ») : creux, intérieur, dessous de l'anse."""
-    scene = bpy.context.scene
-    scene.render.engine = 'CYCLES'
-    scene.cycles.device = 'CPU'
-    scene.cycles.samples = samples
-    scene.cycles.use_denoising = False
-    world = scene.world or bpy.data.worlds.new('Monde')
-    scene.world = world
-    world.light_settings.distance = distance
-    for obj in objs:
-        attr = obj.data.color_attributes.new('Col', 'BYTE_COLOR', 'CORNER')
-        obj.data.color_attributes.active_color = attr
-        obj.data.color_attributes.render_color_index = 0
-        g.activate(obj)
-        bpy.ops.object.bake(type='AO', target='VERTEX_COLORS')
+bake_vertex_ao = g.bake_vertex_ao
 
 
 def zone(center_deg, width_deg, v0, v1, seam_deg, radius, height):

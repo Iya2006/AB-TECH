@@ -25,7 +25,10 @@ export function drawPrintCanvas(canvas: HTMLCanvasElement, spec: PrintSpec) {
 
 /** Texture du visuel, pour une zone de `cm` centimètres (largeur, hauteur). */
 export function usePrintTexture(spec: PrintSpec | null, cm: [number, number], size = 1024) {
-  const { canvas, texture } = useMemo(() => {
+  const has = spec !== null
+  // rien n'est créé tant qu'il n'y a pas de visuel (la visite affiche des dizaines de produits sans marquage)
+  const made = useMemo(() => {
+    if (!has) return null
     const canvas = document.createElement('canvas')
     const landscape = cm[0] >= cm[1]
     canvas.width = landscape ? size : Math.round((size * cm[0]) / cm[1])
@@ -36,8 +39,9 @@ export function usePrintTexture(spec: PrintSpec | null, cm: [number, number], si
     texture.flipY = false
     texture.anisotropy = 8
     return { canvas, texture }
-  }, [cm[0], cm[1], size])
-  useEffect(() => () => texture.dispose(), [texture])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [has, cm[0], cm[1], size])
+  useEffect(() => () => made?.texture.dispose(), [made])
 
   // réglages lus un par un : un objet recréé à chaque rendu ne redessine rien
   const text = spec?.text
@@ -49,10 +53,10 @@ export function usePrintTexture(spec: PrintSpec | null, cm: [number, number], si
   const mark = spec?.mark
   const finish = spec?.finish
   useEffect(() => {
-    if (!spec) return
-    drawPrintCanvas(canvas, { text: text ?? '', sub, ink: ink ?? '#000', logo, font: family ? { family, weight: weight ?? 800 } : undefined, mark, finish })
-    texture.needsUpdate = true
+    if (!made) return
+    drawPrintCanvas(made.canvas, { text: text ?? '', sub, ink: ink ?? '#000', logo, font: family ? { family, weight: weight ?? 800 } : undefined, mark, finish })
+    made.texture.needsUpdate = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas, texture, text, sub, ink, logo, family, weight, mark, finish, spec === null])
-  return spec ? texture : null
+  }, [made, text, sub, ink, logo, family, weight, mark, finish])
+  return made?.texture ?? null
 }

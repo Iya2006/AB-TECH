@@ -33,6 +33,8 @@ export interface Studio3DProps {
   api: MutableRefObject<Studio3DApi | null>
   /** Le modèle est chargé et affiché (appelé à chaque changement de produit). */
   onReady?: () => void
+  /** Faux : le visuel est fixe (fiche produit), on ne fait que tourner autour. */
+  movable?: boolean
 }
 
 const FOV = 30
@@ -78,7 +80,7 @@ interface Orbit {
   touched: boolean
 }
 
-function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, onReady }: Omit<Studio3DProps, 'active'>) {
+function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, onReady, movable = true }: Omit<Studio3DProps, 'active'>) {
   const { meta, bounds } = useProductAsset(model)
   // monté une fois le modèle téléchargé : le cadre peut retirer son indicateur de chargement
   useEffect(() => onReady?.(), [model, onReady])
@@ -97,8 +99,8 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
   /** Plateau tournant : c'est le vêtement qui tourne, pas la caméra — le côté regardé reste sous la lumière. */
   const turntable = useRef<THREE.Group>(null)
   const printDrag = useRef<{ dx: number; dy: number } | null>(null)
-  const latest = useRef({ place, side, onPlace, hasPrint: !!print })
-  latest.current = { place, side, onPlace, hasPrint: !!print }
+  const latest = useRef({ place, side, onPlace, hasPrint: !!print && movable })
+  latest.current = { place, side, onPlace, hasPrint: !!print && movable }
 
   const height = bounds.max.y - bounds.min.y
   // le produit tourne autour du centre de son encombrement (la visière d'une casquette le décale vers l'avant)

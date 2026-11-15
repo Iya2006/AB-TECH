@@ -1,4 +1,7 @@
 import {
+  CONTACT_LABEL,
+  DEADLINE_LABEL,
+  DELIVERY_LABEL,
   ORDER_STATUSES,
   QUOTE_STATUSES,
   REVIEW_STATUSES,
@@ -17,6 +20,8 @@ import { Stars } from '../../ui/shop'
 import { Card, DangerButton, Empty, errorText, PageHeader, Pill, toast } from '../ui'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+/** Date seule (AAAA-MM-JJ), lue à midi pour ne pas glisser d'un jour selon le fuseau. */
+const fmtDay = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
 const ref = (id: string) => id.slice(0, 8).toUpperCase()
 const PRODUCT_LABEL = { tshirt: 'T-shirt', polo: 'Polo', sweat: 'Sweat à capuche', casquette: 'Casquette', mug: 'Mug', tote: 'Tote bag', carte: 'Carte de visite' } as const
 const WEARER_LABEL = { homme: 'porté homme', femme: 'porté femme', seul: 'produit seul' } as const
@@ -114,6 +119,15 @@ export function QuotesPage() {
                     {SERVICES.find((s) => s.slug === q.service)?.title ?? q.service}
                     {q.quantity ? ` · ${q.quantity} ex.` : ''}
                   </p>
+                  {/* précisions du devis guidé : ce qu'il faut savoir pour répondre vite */}
+                  {q.details && (q.details.deadline || q.details.date || q.details.delivery || q.details.contact) && (
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {q.details.deadline && <Pill tone={q.details.deadline === 'urgent' ? 'warn' : 'neutral'}>{DEADLINE_LABEL[q.details.deadline]}</Pill>}
+                      {q.details.date && <Pill tone="neutral">Pour le {fmtDay(q.details.date)}</Pill>}
+                      {q.details.delivery && <Pill tone="neutral">{DELIVERY_LABEL[q.details.delivery]}</Pill>}
+                      {q.details.contact && <Pill tone="accent">Répondre par {CONTACT_LABEL[q.details.contact].toLowerCase()}</Pill>}
+                    </div>
+                  )}
                   <p className="mt-3 whitespace-pre-line text-[14.5px] leading-relaxed text-ink/75">{q.message}</p>
                   {q.customization && (
                     <div className="mt-3 rounded-2xl bg-[#f4f7fb] p-3 text-[13px] text-ink/70">

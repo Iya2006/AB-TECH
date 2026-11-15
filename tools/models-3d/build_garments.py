@@ -170,6 +170,20 @@ GARMENTS = {
         stitches=[('hem', (0.022, 0.028))],
         zones=dict(front=(0.0, 0.07, 0.28, 0.30), back=(0.0, 0.07, 0.28, 0.30)),
     ),
+    'sweat': dict(
+        length=0.69,
+        front=lambda: long_sleeve(0.69, 0.070, neck=0.102, chest=0.295, hem=0.265, bicep=0.20, cuff=0.11),
+        back=lambda: long_sleeve(0.69, 0.022, neck=0.102, chest=0.295, hem=0.265, bicep=0.20, cuff=0.11),
+        fabric='molleton',
+        step=0.012,
+        frames=130,
+        arm_angle=44,
+        ribs=[dict(flag='cuff', profile=LONG_RIB), dict(flag='hem', profile=LONG_RIB)],
+        hems=[],
+        hoodie=dict(drop=0.070),
+        stitches=[],
+        zones=dict(front=(0.0, 0.305, 0.28, 0.25), back=(0.0, 0.16, 0.30, 0.34)),
+    ),
     'pull': dict(
         length=0.68,
         front=lambda: long_sleeve(0.68, 0.088),
@@ -239,6 +253,19 @@ def build(name):
     if spec.get('handles'):
         extras.append(tote_handles(obj.data.materials[0]))
     late = []  # posés après le calcul des ombres (ils recouvrent le tissu de trop près)
+    shaded = []  # pièces sans carte d'ombres : leurs ombres sont rangées dans leurs sommets
+    if spec.get('hoodie'):
+        surface = g.Surface(obj)
+        hood = g.smooth_object(g.add_hood(obj, surface))
+        hood.data.materials.append(g.fabric_material('capuche'))
+        pocket = g.smooth_object(g.add_patch(obj, surface, z0=0.075, z1=0.275, half_bottom=0.165, half_top=0.105))
+        pocket.data.materials.append(obj.data.materials[0])
+        cords = g.add_cords(obj, surface, top_z=spec['length'] - spec['hoodie']['drop'])
+        cords.data.materials.append(g.fabric_material('cordon', (0.9, 0.9, 0.88, 1)))
+        pocket.hide_render = cords.hide_render = True
+        extras.append(hood)
+        late += [pocket, cords]
+        shaded += [hood, cords]
     if spec.get('polo'):
         surface = g.Surface(obj)
         collar = g.smooth_object(g.add_polo_collar(obj, surface))
@@ -258,6 +285,9 @@ def build(name):
     log(name, 'ombres des plis calculées', t0)
     for o in late:
         o.hide_render = False
+    if shaded:
+        g.bake_vertex_ao(shaded, samples=64, distance=0.1)
+        log(name, 'ombres de la capuche calculées', t0)
 
     if PREVIEW:
         top = max(v.co.z for v in obj.data.vertices)
@@ -277,10 +307,13 @@ def build(name):
 
     for key in list(obj.keys()):
         del obj[key]
+    if shaded:
+        g.ensure_white_colors([obj] + extras + late)
     g.activate(obj)
     for o in extras + late:
         o.select_set(True)
     bpy.ops.object.join()
+    g.activate_colors(obj)
     # le bas du vêtement (bord-côte compris) à la hauteur zéro
     low = min(v.co.z for v in obj.data.vertices)
     for v in obj.data.vertices:
@@ -299,6 +332,7 @@ def build(name):
         export_lights=False,
         export_animations=False,
         export_materials='EXPORT',
+        export_colors=True,
     )
     with open(os.path.join(OUT, name + '.json'), 'w') as f:
         json.dump(meta, f, indent=1)

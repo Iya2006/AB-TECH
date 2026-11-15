@@ -1,13 +1,34 @@
 import type { Product } from '@atelier/shared'
 import { ContactShadows, Environment, Lightformer, OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { Suspense } from 'react'
+import { Suspense, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import type { PrintSpec } from '../../lib/mockup/engine'
+import Studio3D, { type Studio3DApi } from '../../sections/Studio3D'
 import { ProductModel } from '../../three/ProductDisplay'
+import { model3dOf, type Place } from '../../three/real/Product3D'
 
-/** Aperçu 3D d'un produit sans photo : on peut le faire tourner du doigt. */
-export default function ProductPreview3D({ product }: { product: Product }) {
-  const tall = ['tshirt', 'polo', 'extincteur', 'tote'].includes(product.model)
+const PLACE: Place = { x: 0.5, y: 0.45, s: 0.72 }
+const noop = () => {}
+
+/** Encre lisible sur la couleur du produit (pour un visuel monochrome). */
+function inkFor(hex: string) {
+  const c = new THREE.Color(hex)
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b > 0.45 ? '#0f172a' : '#f4f1ea'
+}
+
+/**
+ * Le produit en 3D, qu'on fait tourner du doigt : le vrai modèle (tissu simulé, objet modélisé) à la couleur
+ * du produit, avec son visuel imprimé s'il en a un ; à défaut de modèle, une forme simple.
+ */
+export default function ProductPreview3D({ product, logo = null }: { product: Product; logo?: HTMLImageElement | null }) {
+  const model = model3dOf(product.model)
+  const api = useRef<Studio3DApi | null>(null)
+  const print = useMemo<PrintSpec | null>(() => (logo ? { text: '', ink: inkFor(product.color), logo, mark: false } : null), [logo, product.color])
+  if (model) {
+    return <Studio3D model={model} color={product.color} print={print} place={PLACE} side="front" onPlace={noop} zoom={false} guide={false} active api={api} movable={false} />
+  }
+  const tall = product.model === 'extincteur'
   return (
     <Canvas dpr={[1, 2]} camera={{ position: [0, tall ? 0.45 : 0.3, tall ? 1.7 : 1.1], fov: 32 }} gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping }}>
       <color attach="background" args={['#eef2f7']} />

@@ -20,6 +20,7 @@ import { InformatiqueStation, SecuriteStation } from './stations/TechStations'
 import { TextureWarmup } from './textureQueue'
 import { useWarm, Warm, WarmRoot } from './Warm'
 import { Exterior } from './world/Exterior'
+import { STATION_FOOTPRINTS } from './world/layout'
 import { Hall } from './world/Hall'
 import { Reception } from './world/Reception'
 
@@ -134,12 +135,14 @@ const AMBIENCE: Record<Mood, Record<Zone, Ambience>> = {
   day: {
     outside: { bg: '#cfe1f3', fogNear: 40, fogFar: 160, hemi: 0.9, sun: 2.6, exposure: 1 },
     // brouillard intérieur très léger : les postes du fond restent nets
-    inside: { bg: '#eef2f7', fogNear: 34, fogFar: 130, hemi: 1.0, sun: 1.2, exposure: 1 },
+    // intérieur : peu de lumière d'ambiance uniforme (elle aplatit tout et brûle les blancs) ; le modelé
+    // vient des reflets des dalles du plafond et d'une lumière principale franche
+    inside: { bg: '#e6ebf2', fogNear: 34, fogFar: 130, hemi: 0.42, sun: 1.35, exposure: 0.96 },
     overview: { bg: '#8fa6bf', fogNear: 60, fogFar: 220, hemi: 0.95, sun: 2.4, exposure: 1 },
   },
   night: {
     outside: { bg: '#05070d', fogNear: 22, fogFar: 95, hemi: 0.1, sun: 0.35, exposure: 1.05 },
-    inside: { bg: '#eef2f7', fogNear: 34, fogFar: 130, hemi: 1.05, sun: 0.9, exposure: 1 },
+    inside: { bg: '#e6ebf2', fogNear: 34, fogFar: 130, hemi: 0.42, sun: 1.2, exposure: 0.96 },
     overview: { bg: '#05070d', fogNear: 40, fogFar: 140, hemi: 0.3, sun: 0.3, exposure: 1.05 },
   },
 }
@@ -170,7 +173,7 @@ function EnvironmentSwitch({ zone }: { zone: Zone }) {
   useEffect(() => {
     const inside = zone === 'inside'
     scene.environment = inside ? interior : outside
-    scene.environmentIntensity = inside ? 0.85 : mood === 'day' ? 0.9 : 0.35
+    scene.environmentIntensity = inside ? 0.8 : mood === 'day' ? 0.9 : 0.35
   }, [zone, interior, outside, mood, scene])
   useEffect(
     () => () => {
@@ -346,14 +349,14 @@ function LightRig() {
 
 /** Un poste de l'atelier, avec sa zone d'ombre au sol (x, z, largeur, profondeur). */
 const STATIONS: Array<{ z: number; shadow: [number, number, number, number]; render: (quality: Quality) => ReactNode }> = [
-  { z: -10, shadow: [-6.3, -9.6, 2.6, 3.8], render: () => <CreationStation /> },
-  { z: -18, shadow: [6.2, -18.5, 3.4, 9], render: () => <ImpressionStation /> },
-  { z: -26, shadow: [-6.2, -27.4, 3.2, 7], render: () => <TextileStation /> },
-  { z: -36, shadow: [6.0, -36.3, 3.2, 7.4], render: () => <ObjetsStation /> },
-  { z: -44, shadow: [-6.6, -44, 4.6, 6.6], render: () => <EvenementielStation /> },
-  { z: -56, shadow: [-6.4, -56, 2.6, 6], render: () => <InformatiqueStation /> },
-  { z: -64, shadow: [5.0, -64.5, 4, 6], render: (quality) => <SecuriteStation quality={quality} /> },
-]
+  { z: -10, render: () => <CreationStation /> },
+  { z: -18, render: () => <ImpressionStation /> },
+  { z: -26, render: () => <TextileStation /> },
+  { z: -36, render: () => <ObjetsStation /> },
+  { z: -44, render: () => <EvenementielStation /> },
+  { z: -56, render: () => <InformatiqueStation /> },
+  { z: -64, render: (quality: Quality) => <SecuriteStation quality={quality} /> },
+].map((s, i) => ({ ...s, shadow: STATION_FOOTPRINTS[i]! }))
 
 const isNear = (z: number, ahead: number, behind: number, cameraZ: number) => {
   const dz = cameraZ - z

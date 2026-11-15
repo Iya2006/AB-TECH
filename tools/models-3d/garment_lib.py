@@ -860,6 +860,202 @@ def add_polo_collar(obj, surface, stand=0.026, fall_back=0.056, fall_front=0.074
     return _strip_mesh(name, rows, uvs, closed=False, flip=True)
 
 
+def _neckline(obj):
+    """
+    L'encolure du vêtement drapé, dans l'ordre (départ au milieu du devant, vers +x) :
+    liste de (x, z, dos ?, position, normale, direction qui prolonge le tissu).
+    """
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.normal_update()
+    luv = bm.loops.layers.uv['UVMap']
+    loops = _boundary_loops(bm, EDGE['neck'])
+    if not loops:
+        bm.free()
+        return []
+    loop = max(loops, key=len)
+    frames = _frames(loop)
+    W, zmin = obj['uv_w'], obj['uv_zmin']
+    pts = []
+    for v in loop:
+        face = next(f for e in v.link_edges if len(e.link_faces) == 1 for f in e.link_faces)
+        u, vv = next(l[luv].uv for l in face.loops if l.vert is v)
+        back = u > 0.5
+        x = (0.75 - u) * 2 * W if back else (u - 0.25) * 2 * W
+        pts.append((x, (vv - 0.05) * W + zmin, back))
+    bm.free()
+    n = len(loop)
+    start = min(range(n), key=lambda i: (abs(pts[i][0]) + (10 if pts[i][2] else 0)))
+    order = [(start + k) % n for k in range(n)]
+    if pts[order[1]][0] < pts[order[-1]][0]:
+        order = [order[0]] + list(reversed(order[1:]))
+    return [(pts[i][0], pts[i][1], pts[i][2], frames[i][0], frames[i][1], frames[i][2]) for i in order]
+
+
+def add_hood(obj, surface, drop=0.31, shoulder=0.085, front=0.04, stand=0.05, tile=0.04, name='Capuche'):
+    """
+    Capuche rabattue dans le dos : elle monte autour du cou comme un grand col souple, se retourne et retombe en
+    poche sur le dos (`drop` mètres au milieu), plus courte sur les épaules et devant, où ses deux bords se rejoignent.
+    Elle suit le vêtement drapé (échantillonné dans le patron). Dépliage métrique (1 = `tile` m), sans carte d'ombres.
+    """
+    ring = _neckline(obj)
+    if not ring:
+        return None
+    n = len(ring)
+    half = max(abs(x) for x, _, back, *_ in ring if back) or 0.1
+    center = Vector((0.0, sum(z for _, z, *_ in ring) / n))
+    rows, uvs, length, prev = [], [], 0.0, None
+    for rank, (x, z, back, p, nrm, d) in enumerate(ring + [ring[0]]):
+        if prev is not None:
+            length += (p - prev).length
+        prev = p
+        away = Vector((x, z)) - center
+        away.normalize()
+        if back:
+            k = 1 - (abs(x) / half) ** 2.6  # 1 au milieu du dos, 0 à la pointe d'épaule
+            fall = shoulder + (drop - shoulder) * max(0.0, k)
+            # la poche tombe droit dans le dos, sans s'évaser comme le ferait l'éventail des directions
+            away = (away * 0.35 + Vector((0.0, -1.0)) * 0.65 * max(0.0, k) + away * 0.65 * (1 - max(0.0, k))).normalized()
+            volume = 0.012 + 0.026 * max(0.0, k)
+            rise = stand
+        else:
+            k = min(1.0, abs(x) / 0.09)  # 0 au milieu du devant
+            fall = front + (shoulder - front) * k
+            volume = 0.008 + 0.004 * k
+            rise = stand * (0.45 + 0.55 * k)
+        up = (Vector((0, 0, 1)) * 0.85 + Vector((d.x, d.y, 0)) * 0.5).normalized()
+        row = [p + nrm * 0.0015, p + up * (rise * 0.5) + nrm * (volume * 0.45), p + up * rise + nrm * (volume * 1.05)]
+        steps = 9
+        for q in range(1, steps + 1):
+            frac = q / steps
+            target = Vector((x, z)) + away * (fall * frac)
+            hit = surface.at(target.x, target.y, back)
+            if hit is None:
+                hit = (p - d * (fall * frac), nrm)
+            sp, sn = hit
+            # épaisseur de la capuche repliée : pleine en haut, elle s'amincit vers le bas et se referme
+            lift = volume * (1.0 - 0.55 * frac) * (1.0 if frac < 0.9 else 0.55)
+            row.append(sp + sn * lift + up * (rise * 0.55 * max(0.0, 1 - frac * 2.4)))
+        # le bas de la poche revient contre le dos
+        row.append(row[-1] - nrm * (volume * 0.42) - (row[-1] - row[-2]).normalized() * 0.004)
+        across = [0.0]
+        for a, b in zip(row, row[1:]):
+            across.append(across[-1] + (b - a).length)
+        rows.append(row)
+        uvs.append([(length / tile, a / tile) for a in across])
+    return _strip_mesh(name, rows, uvs, closed=False, flip=True)
+
+
+def add_patch(obj, surface, z0, z1, half_bottom, half_top, shoulder=0.4, lift=0.0026, cols=25, rows_n=15, name='Poche'):
+    """
+    Pièce rapportée sur le devant (poche kangourou) : large en bas, biaisée vers le haut à partir de `shoulder`
+    (part de la hauteur). Elle garde le dépliage du patron : même teinte, mêmes ombres que le tissu.
+    """
+    rows, uvs = [], []
+    for i in range(rows_n + 1):
+        t = i / rows_n
+        z = z0 + (z1 - z0) * t
+        half = half_bottom if t < shoulder else half_bottom + (half_top - half_bottom) * (t - shoulder) / (1 - shoulder)
+        row, urow = [], []
+        for k in range(cols):
+            c = k / (cols - 1)
+            x = (c * 2 - 1) * half
+            hit = surface.at(x, z)
+            if hit is None:
+                continue
+            pos, nor = hit
+            edge = min(min(c, 1 - c) * (cols - 1), min(i, rows_n - i))
+            row.append(pos + nor * (lift * min(1.0, edge) + 0.0004))
+            urow.append(surface.uv(x, z))
+        if len(row) == cols:
+            rows.append(row)
+            uvs.append(urow)
+    patch = _strip_mesh(name, rows, uvs)
+    outward = surface.at(0.0, (z0 + z1) / 2)[1]
+    if patch.data.polygons[len(patch.data.polygons) // 2].normal.dot(outward) < 0:
+        patch.data.flip_normals()
+    return patch
+
+
+def add_cords(obj, surface, top_z, length=0.21, spread=0.028, radius=0.0026, name='Cordons'):
+    """Cordons de serrage de la capuche : deux cordons qui tombent du col sur la poitrine, terminés par un nœud."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new('UVMap')
+    for side in (-1, 1):
+        path, n = [], 26
+        for i in range(n + 1):
+            t = i / n
+            z = top_z + 0.012 - (length + 0.012) * t
+            x = side * (spread + 0.012 * math.sin(t * math.pi * 0.9) + 0.004 * side * math.sin(t * 7))
+            hit = surface.at(x, z)
+            if hit is None:
+                hit = surface.at(x, top_z - 0.004)
+            pos, nor = hit
+            path.append(pos + nor * (radius + 0.0012 + 0.004 * math.sin(t * math.pi)))
+        rings = []
+        for i, pnt in enumerate(path):
+            tng = (path[min(i + 1, n)] - path[max(i - 1, 0)]).normalized()
+            a = tng.cross(Vector((0, 1, 0))).normalized()
+            b = tng.cross(a).normalized()
+            # nœud au bout du cordon
+            r = radius * (1.9 if i >= n - 2 else 1.0)
+            rings.append([bm.verts.new(pnt + a * (r * math.cos(2 * math.pi * k / 8)) + b * (r * math.sin(2 * math.pi * k / 8))) for k in range(8)])
+        for ra, rb in zip(rings, rings[1:]):
+            for k in range(8):
+                j = (k + 1) % 8
+                f = bm.faces.new((ra[k], ra[j], rb[j], rb[k]))
+                f.smooth = True
+                for loop in f.loops:
+                    loop[uv].uv = (0.0, -1.0)
+        for end in (rings[0], rings[-1]):
+            f = bm.faces.new(end)
+            for loop in f.loops:
+                loop[uv].uv = (0.0, -1.0)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    return new_object(name, mesh)
+
+
+def bake_vertex_ao(objs, samples=96, distance=0.12):
+    """Occlusion ambiante rangée dans les sommets (couleur « Col ») : creux, intérieur d'une capuche, dessous d'une anse."""
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'CPU'
+    scene.cycles.samples = samples
+    scene.cycles.use_denoising = False
+    world = scene.world or bpy.data.worlds.new('Monde')
+    scene.world = world
+    world.light_settings.distance = distance
+    for obj in objs:
+        attr = obj.data.color_attributes.new('Col', 'BYTE_COLOR', 'CORNER')
+        obj.data.color_attributes.active_color = attr
+        obj.data.color_attributes.render_color_index = 0
+        activate(obj)
+        bpy.ops.object.bake(type='AO', target='VERTEX_COLORS')
+
+
+def ensure_white_colors(objs, name='Col'):
+    """
+    Avant de réunir des pièces : celles qui n'ont pas d'ombres rangées dans leurs sommets reçoivent du blanc.
+    (Sans cela, la réunion les remplit de noir, ou l'export abandonne la couche de couleur.)
+    """
+    for obj in objs:
+        if name in obj.data.color_attributes:
+            continue
+        attr = obj.data.color_attributes.new(name, 'BYTE_COLOR', 'CORNER')
+        for item in attr.data:
+            item.color = (1.0, 1.0, 1.0, 1.0)
+
+
+def activate_colors(obj, name='Col'):
+    attr = obj.data.color_attributes.get(name)
+    if attr:
+        obj.data.color_attributes.active_color = attr
+        obj.data.color_attributes.render_color_index = list(obj.data.color_attributes).index(attr)
+
+
 # --------------------------------------------------------------------------------------
 # Occlusion ambiante (ombres dans les plis), calculée dans le dépliage du patron
 # --------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { SERVICES, type AccountActivity, type AuthUser, type Order, type OrderStatus, type QuoteRecord, type QuoteStatus, type ReviewStatus } from '@atelier/shared'
+import { DEADLINE_LABEL, DELIVERY_LABEL, SERVICES, type AccountActivity, type AuthUser, type Order, type OrderStatus, type QuoteRecord, type QuoteStatus, type ReviewStatus } from '@atelier/shared'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Alert, authInput, NewPasswordForm, Spinner, TextField } from '../auth/forms'
 import { formatPrice } from '../config/brand'
@@ -387,6 +387,17 @@ function Quotes({ list }: { list?: QuoteRecord[] }) {
                 {q.quantity ? <span className="font-medium text-ink/50"> · {q.quantity} ex.</span> : null}
               </h3>
               <p className="mt-1.5 line-clamp-3 whitespace-pre-line text-[14.5px] leading-relaxed text-ink/65">{q.message}</p>
+              {q.details && (q.details.deadline || q.details.date || q.details.delivery) && (
+                <p className="mt-2 text-[13px] font-medium text-ink/50">
+                  {[
+                    q.details.deadline && DEADLINE_LABEL[q.details.deadline],
+                    q.details.date && `pour le ${new Date(`${q.details.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`,
+                    q.details.delivery && DELIVERY_LABEL[q.details.delivery],
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              )}
               {(q.logoUrl || q.mockupUrl) && (
                 <div className="mt-4 flex gap-2">
                   {[q.mockupUrl, q.logoUrl].filter(Boolean).map((u) => (

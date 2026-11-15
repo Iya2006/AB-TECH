@@ -2,9 +2,11 @@ import { useGLTF, useTexture } from '@react-three/drei'
 import type { ThreeElements } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo } from 'react'
 import * as THREE from 'three'
+import { useApp } from '../../lib/store'
 import {
   alphaTexture,
   createCeramicMaterial,
+  createPlainFabricMaterial,
   createFabricMaterial,
   createLacquerMaterial,
   createRibMaterial,
@@ -24,7 +26,7 @@ import {
  * Le visuel du client se pose dans ce dépliage : il suit la forme et prend la lumière de la matière.
  */
 
-export type Model3D = 'tshirt' | 'polo' | 'pull' | 'tote' | 'mug' | 'gourde' | 'casquette' | 'snapback' | 'trucker'
+export type Model3D = 'tshirt' | 'polo' | 'sweat' | 'pull' | 'tote' | 'mug' | 'gourde' | 'casquette' | 'snapback' | 'trucker'
 export type PrintSide = 'front' | 'back'
 
 /** Position du visuel dans sa zone : centre (0–1, depuis le coin haut gauche) et taille (1 = toute la zone). */
@@ -59,19 +61,24 @@ export interface ProductMeta {
   zones: Partial<Record<PrintSide, Zone>> & { front: Zone }
 }
 
-export const modelUrl = (model: Model3D) => `${MODELS_BASE}/${model}.glb`
+/** `lod` : version allégée, pour la visite de l'atelier (des dizaines de produits à l'écran, vus de loin). */
+export const modelUrl = (model: Model3D, lod = false) => `${MODELS_BASE}/${model}${lod ? '-lod' : ''}.glb`
 const aoUrl = (model: Model3D) => `${MODELS_BASE}/${model}-ao.webp`
 /** Les vêtements ont une carte d'ombres des plis ; les objets rangent leurs ombres dans leurs sommets. */
-const HAS_AO_MAP: Record<Model3D, boolean> = { tshirt: true, polo: true, pull: true, tote: true, mug: false, gourde: false, casquette: false, snapback: false, trucker: false }
+const HAS_AO_MAP: Record<Model3D, boolean> = { tshirt: true, polo: true, sweat: true, pull: true, tote: true, mug: false, gourde: false, casquette: false, snapback: false, trucker: false }
 /** Modèles dont le dos est imprimable. */
-export const HAS_BACK: Record<Model3D, boolean> = { tshirt: true, polo: true, pull: true, tote: true, mug: true, gourde: false, casquette: false, snapback: false, trucker: false }
+export const HAS_BACK: Record<Model3D, boolean> = { tshirt: true, polo: true, sweat: true, pull: true, tote: true, mug: true, gourde: false, casquette: false, snapback: false, trucker: false }
 
-export function preloadModel(model: Model3D) {
-  useGLTF.preload(modelUrl(model), false, true)
+/** Modèle 3D d'une forme de produit du catalogue (null : pas de modèle, le produit reste en photo). */
+const MODELS: readonly Model3D[] = ['tshirt', 'polo', 'sweat', 'pull', 'tote', 'mug', 'gourde', 'casquette', 'snapback', 'trucker']
+export const model3dOf = (model: string): Model3D | null => ((MODELS as readonly string[]).includes(model) ? (model as Model3D) : null)
+
+export function preloadModel(model: Model3D, lod = false) {
+  useGLTF.preload(modelUrl(model, lod), false, true)
   if (HAS_AO_MAP[model]) useTexture.preload(aoUrl(model))
 }
 
-type PartKind = 'print' | 'cote' | 'bouton' | 'bouchon' | 'filet' | 'interieur'
+type PartKind = 'print' | 'cote' | 'bouton' | 'bouchon' | 'filet' | 'interieur' | 'capuche' | 'cordon'
 
 interface Part {
   geometry: THREE.BufferGeometry
@@ -89,13 +96,13 @@ interface ProductAsset {
   bounds: THREE.Box3
 }
 
-const PART_KINDS: PartKind[] = ['cote', 'bouton', 'bouchon', 'filet', 'interieur']
+const PART_KINDS: PartKind[] = ['cote', 'bouton', 'bouchon', 'filet', 'interieur', 'capuche', 'cordon']
 const partKind = (name: string): PartKind => PART_KINDS.find((k) => name.startsWith(k)) ?? 'print'
 
 /** Géométries et réglages d'un produit (partagés entre toutes ses copies). */
-export function useProductAsset(model: Model3D): ProductAsset {
+export function useProductAsset(model: Model3D, lod = false): ProductAsset {
   // décodeur meshopt embarqué (pas de téléchargement externe)
-  const gltf = useGLTF(modelUrl(model), false, true)
+  const gltf = useGLTF(modelUrl(model, lod), false, true)
   return useMemo(() => {
     const parts: Part[] = []
     let meta: ProductMeta | null = null
@@ -132,14 +139,16 @@ export function uvToZone(zone: Zone, uv: THREE.Vector2) {
 }
 
 const FULL_ZONE: Place = { x: 0.5, y: 0.5, s: 1 }
+const LIGHT = new THREE.Color('#f4f2ec')
+const noRaycast = () => null
 /** Mailles du filet : environ 3 mm, sur le dépliage de la calotte (tour de tête × hauteur développée). */
 const netTexture = () => alphaTexture('filet', 18, 4.5)
 
-function printableMaterial(name: string, meta: ProductMeta): FabricMaterial {
+function printableMaterial(name: string, meta: ProductMeta, detail: boolean): FabricMaterial {
   if (name.startsWith('ceramique')) return createCeramicMaterial()
   if (name.startsWith('metal')) return createLacquerMaterial()
   const fabric = meta.fabric ?? 'jersey'
-  return createFabricMaterial(fabric, meta.repeat ?? patternRepeat(fabric, meta.metersPerUv ?? 1))
+  return createFabricMaterial(fabric, meta.repeat ?? patternRepeat(fabric, meta.metersPerUv ?? 1), detail)
 }
 
 type GroupProps = Omit<ThreeElements['group'], 'children'>
@@ -151,6 +160,8 @@ export function Product3D({
   back = null,
   guide = null,
   shadows = true,
+  lod = false,
+  proxy = false,
   ...props
 }: GroupProps & {
   model: Model3D
@@ -160,25 +171,48 @@ export function Product3D({
   /** Affiche en pointillés la zone imprimable du devant ou du dos. */
   guide?: PrintSide | null
   shadows?: boolean
+  /**
+   * Version de la visite : maillage allégé, et matières sans relief de maille (à cette distance la maille est
+   * plus fine qu'un pixel : elle ne ferait que scintiller).
+   */
+  lod?: boolean
+  /**
+   * Clic et survol testés sur une simple boîte englobante au lieu des milliers de triangles du modèle
+   * (visite : le pointeur est testé à chaque mouvement contre tous les produits).
+   */
+  proxy?: boolean
 }) {
-  const { parts, meta } = useProductAsset(model)
+  const { parts, meta, bounds } = useProductAsset(model, lod)
   const materials = useMemo(() => {
     const printable = parts.find((p) => p.kind === 'print')!
-    const print = printableMaterial(printable.name, meta)
+    const detail = !lod
+    const print = printableMaterial(printable.name, meta, detail)
     // ombres rangées dans les sommets (objets) : elles multiplient la couleur
     const vertexAo = !!printable.geometry.attributes.color
     print.vertexColors = vertexAo
-    return {
-      print,
-      cote: createRibMaterial(),
-      bouton: new THREE.MeshPhysicalMaterial({ color: '#f1efe9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
-      bouchon: new THREE.MeshPhysicalMaterial({ color: '#1b1d21', roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.4, vertexColors: vertexAo }),
+    /** La pièce a des ombres rangées dans ses sommets (sans elles, activer les couleurs de sommets la rendrait noire). */
+    const shaded = (kind: PartKind) => !!parts.find((p) => p.kind === kind)?.geometry.attributes.color
+    const make: Record<Exclude<PartKind, 'print'>, () => THREE.Material> = {
+      cote: () => createRibMaterial(detail),
+      // capuche : même molleton que le corps, ombres rangées dans ses sommets
+      capuche: () => createPlainFabricMaterial(meta.fabric ?? 'molleton', detail, shaded('capuche')),
+      cordon: () => new THREE.MeshStandardMaterial({ color: '#f1efe9', roughness: 0.9, vertexColors: shaded('cordon') }),
+      bouton: () => new THREE.MeshPhysicalMaterial({ color: '#f1efe9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
+      bouchon: () => new THREE.MeshPhysicalMaterial({ color: '#1b1d21', roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.4, vertexColors: vertexAo }),
       // filet du trucker : trous découpés par une texture, visible des deux côtés
-      filet: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, side: THREE.DoubleSide, alphaMap: netTexture(), alphaTest: 0.5, alphaToCoverage: true, vertexColors: vertexAo }),
+      filet: () => new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, side: THREE.DoubleSide, alphaMap: netTexture(), alphaTest: 0.5, alphaToCoverage: true, vertexColors: vertexAo }),
       // bandeau intérieur de la casquette
-      interieur: new THREE.MeshStandardMaterial({ color: '#23262b', roughness: 0.95, side: THREE.DoubleSide, vertexColors: vertexAo }),
+      interieur: () => new THREE.MeshStandardMaterial({ color: '#23262b', roughness: 0.95, side: THREE.DoubleSide, vertexColors: vertexAo }),
     }
-  }, [parts, meta])
+    // seules les matières des pièces présentes sont créées (une casquette n'a ni bord-côte ni bouton)
+    const out: { print: FabricMaterial } & Partial<Record<PartKind, THREE.Material>> = { print }
+    for (const { kind } of parts) if (kind !== 'print' && !out[kind]) out[kind] = make[kind]()
+    // appareils modestes, dans la visite : pas de duvet (le calcul le plus coûteux de la matière textile)
+    if (lod && useApp.getState().quality === 'low') {
+      for (const m of Object.values(out)) if (m instanceof THREE.MeshPhysicalMaterial) m.sheen = 0
+    }
+    return out
+  }, [parts, meta, lod])
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials])
 
   useLayoutEffect(() => {
@@ -190,10 +224,10 @@ export function Product3D({
 
   useLayoutEffect(() => {
     tintFabric(materials.print, color)
-    tintFabric(materials.cote, color)
-    materials.filet.color.set(color)
-    // boutons ton sur ton, un peu plus clairs (nacre sur les teintes sombres)
-    materials.bouton.color.set(color).lerp(new THREE.Color('#f4f2ec'), 0.55)
+    for (const kind of ['cote', 'capuche'] as const) if (materials[kind]) tintFabric(materials[kind] as THREE.MeshPhysicalMaterial, color)
+    ;(materials.filet as THREE.MeshStandardMaterial | undefined)?.color.set(color)
+    // cordons et boutons ton sur ton, éclaircis (nacre sur les teintes sombres)
+    for (const kind of ['cordon', 'bouton'] as const) (materials[kind] as THREE.MeshStandardMaterial | undefined)?.color.set(color).lerp(LIGHT, 0.55)
   }, [color, materials])
 
   useLayoutEffect(() => {
@@ -219,9 +253,23 @@ export function Product3D({
           castShadow={shadows}
           receiveShadow={shadows}
           userData={part.kind === 'print' ? { printable: meta } : undefined}
+          {...(proxy ? { raycast: noRaycast } : {})}
         />
       ))}
+      {proxy && <ProxyBox bounds={bounds} />}
     </group>
+  )
+}
+
+/** Boîte invisible à la taille du produit : reçoit clics et survols à la place du modèle. */
+function ProxyBox({ bounds }: { bounds: THREE.Box3 }) {
+  const size = useMemo(() => bounds.getSize(new THREE.Vector3()), [bounds])
+  const center = useMemo(() => bounds.getCenter(new THREE.Vector3()), [bounds])
+  return (
+    <mesh position={center}>
+      <boxGeometry args={[size.x, size.y, Math.max(size.z, 0.04)]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+    </mesh>
   )
 }
 

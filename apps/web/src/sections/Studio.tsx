@@ -158,7 +158,7 @@ const VIEW_3D: { id: View; label: string } = { id: '3d', label: 'Vue 3D' }
 const VIEW_PHOTO: { id: View; label: string } = { id: 'seul', label: 'Photo' }
 
 /** Produits disponibles en vraie 3D (modèles simulés ou modélisés : tools/models-3d). La casquette suit son type. */
-const MODEL_3D: Partial<Record<ProductKind, Model3D>> = { tshirt: 'tshirt', polo: 'polo', mug: 'mug', tote: 'tote' }
+const MODEL_3D: Partial<Record<ProductKind, Model3D>> = { tshirt: 'tshirt', polo: 'polo', sweat: 'sweat', mug: 'mug', tote: 'tote' }
 
 const SIDES: Array<{ id: PrintSide; label: string }> = [
   { id: 'front', label: 'Devant' },

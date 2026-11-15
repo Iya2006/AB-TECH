@@ -10,6 +10,8 @@ import type { MockupBase } from '../../lib/mockup/engine'
 import { MockupView } from '../../lib/mockup/MockupView'
 import { useSite } from '../../lib/site'
 import { useApp } from '../../lib/store'
+import { hasWebGL } from '../../lib/device'
+import { model3dOf } from '../../three/real/Product3D'
 import { thumbUrl } from '../img'
 import { CheckIcon, Kicker, PhoneIcon, WhatsAppIcon } from '../primitives'
 import { Stars, StockBadge } from '../shop'
@@ -94,15 +96,19 @@ function ReviewForm({ productId, onDone }: { productId?: string; onDone: () => v
 }
 
 type View =
+  | { kind: '3d'; key: string; label: string }
   | { kind: 'photo'; key: string; src: string }
   | { kind: 'mockup'; key: string; label: string; base: MockupBase; entry: PhotoEntry; worn: boolean }
 
 /** Photos du produit, puis la pièce sur une vraie personne (textile), ou la photo réelle du modèle. */
 function viewsOf(product: Product): View[] {
-  const views: View[] = product.images.map((src, i) => ({ kind: 'photo', key: `p${i}-${src}`, src }))
+  const views: View[] = []
+  // le vrai modèle 3D d'abord, quand il existe et que l'appareil sait l'afficher
+  if (model3dOf(product.model) && hasWebGL()) views.push({ kind: '3d', key: '3d', label: 'Vue 3D' })
+  views.push(...product.images.map((src, i): View => ({ kind: 'photo', key: `p${i}-${src}`, src })))
   if (!isPhotoModel(product.model)) return views
   const entry = PHOTO[product.model]
-  if (!views.length) views.push({ kind: 'mockup', key: 'produit', label: 'Produit', base: entry.produit, entry, worn: false })
+  if (!views.some((v) => v.kind === 'photo')) views.push({ kind: 'mockup', key: 'produit', label: 'Produit', base: entry.produit, entry, worn: false })
   if (entry.homme) views.push({ kind: 'mockup', key: 'homme', label: 'Porté homme', base: entry.homme, entry, worn: true })
   if (entry.femme) views.push({ kind: 'mockup', key: 'femme', label: 'Porté femme', base: entry.femme, entry, worn: true })
   return views
@@ -148,12 +154,14 @@ export function ProductModal({ id }: { id: string }) {
       <div className="grid max-h-[calc(100svh-2rem)] min-h-0 overflow-y-auto md:grid-cols-2 md:overflow-hidden">
         <div className="relative flex min-h-[300px] flex-col bg-[#eef2f7] md:min-h-[560px]">
           <div className="relative min-h-[360px] flex-1 overflow-hidden">
-            {!view ? (
-              <Suspense fallback={null}>
-                <div className="absolute inset-0">
-                  <ProductPreview3D product={product} />
+            {!view || view.kind === '3d' ? (
+              <Suspense fallback={<span className="absolute inset-0 m-auto size-8 animate-spin rounded-full border-2 border-ink/15 border-t-accent" aria-hidden />}>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,#f7f9fc,#d9e1ec)]">
+                  <ProductPreview3D product={product} logo={logo} />
                 </div>
-                <p className="kicker pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-ink/45">Aperçu 3D · glissez pour tourner</p>
+                <p className="kicker pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-white/80 px-3 py-1 text-ink/55">
+                  {view ? 'Modèle 3D · glissez pour tourner' : 'Aperçu 3D · glissez pour tourner'}
+                </p>
               </Suspense>
             ) : view.kind === 'photo' ? (
               <img key={view.key} src={thumbUrl(view.src, 1400)} alt={product.name} className="image-enter absolute inset-0 h-full w-full object-contain p-6" />

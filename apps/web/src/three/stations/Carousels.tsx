@@ -1,7 +1,7 @@
 import type { Product, StationSlug } from '@atelier/shared'
 import { Html } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { Suspense, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { create } from 'zustand'
 import { formatPrice } from '../../config/brand'
@@ -9,6 +9,8 @@ import { useApp } from '../../lib/store'
 import { M } from '../materials'
 import { Hanger, type GroupProps } from '../models/products'
 import { PhotoPlane, useProductPhoto, useStationActive } from '../PhotoProduct'
+import { has3D, useModelHeight, VisitProduct } from '../real/VisitProduct'
+import { Warm } from '../Warm'
 
 /**
  * Le catalogue qui défile dans l'atelier : un portant de vêtements et une rangée de casquettes.
@@ -140,10 +142,32 @@ function garmentHeight(model: string, withHanger: boolean) {
   return withHanger ? h + 0.16 : h
 }
 
+/** Vêtement en vraie 3D, suspendu à son cintre (le col du modèle arrive juste sous la barre du cintre). */
+function HangingGarment({ product }: { product: Product }) {
+  const height = useModelHeight(product)
+  return (
+    <Warm>
+      <Hanger position-y={-0.055} />
+      <VisitProduct product={product} position-y={-height - 0.035} />
+    </Warm>
+  )
+}
+
+/** Vêtement en photo détourée (produit sans modèle 3D). */
+function HangingPhoto({ product }: { product: Product }) {
+  const photo = useProductPhoto(product)
+  const withHanger = photo?.hanger ?? false
+  return (
+    <>
+      {!withHanger && <Hanger position-y={-0.055} />}
+      {photo && <PhotoPlane photo={photo} height={garmentHeight(product.model, withHanger)} anchor="top" position-y={withHanger ? 0.03 : -0.1} />}
+    </>
+  )
+}
+
 function RailItem({ product, i, count, carousel }: { product: Product; i: number; count: number; carousel: ReturnType<typeof useCarousel> }) {
   const group = useRef<THREE.Group>(null)
   const swing = useRef<THREE.Group>(null)
-  const photo = useProductPhoto(product)
   useFrame(({ clock }, dt) => {
     const g = group.current
     if (!g) return
@@ -171,12 +195,17 @@ function RailItem({ product, i, count, carousel }: { product: Product; i: number
     if (Math.abs(s) < 0.5) useApp.getState().open({ type: 'product', id: product.id })
     else useRails.getState().step('textile', Math.round(s))
   }
-  const withHanger = photo?.hanger ?? false
   return (
     <group ref={group}>
       <group ref={swing} onClick={click} onPointerOver={() => (document.body.style.cursor = 'pointer')} onPointerOut={() => (document.body.style.cursor = '')}>
-        {!withHanger && <Hanger position-y={-0.055} />}
-        {photo && <PhotoPlane photo={photo} height={garmentHeight(product.model, withHanger)} anchor="top" position-y={withHanger ? 0.03 : -0.1} />}
+        {has3D(product) ? (
+          // chaque pièce arrive dès que son modèle est chargé, sans retenir le reste du poste
+          <Suspense fallback={null}>
+            <HangingGarment product={product} />
+          </Suspense>
+        ) : (
+          <HangingPhoto product={product} />
+        )}
       </group>
     </group>
   )
@@ -228,9 +257,14 @@ export function GarmentRail({ products, station, ...props }: GroupProps & { prod
 
 const CAP_STEP = 0.46
 
+function CapPhoto({ product }: { product: Product }) {
+  const photo = useProductPhoto(product)
+  return photo ? <PhotoPlane photo={photo} height={0.2} anchor="bottom" position-y={0.12} /> : null
+}
+
 function CapItem({ product, i, count, carousel }: { product: Product; i: number; count: number; carousel: ReturnType<typeof useCarousel> }) {
   const group = useRef<THREE.Group>(null)
-  const photo = useProductPhoto(product)
+  const turn = useRef<THREE.Group>(null)
   useFrame(({ clock }) => {
     const g = group.current
     if (!g) return
@@ -241,6 +275,8 @@ function CapItem({ product, i, count, carousel }: { product: Product; i: number;
     g.position.set(s * CAP_STEP, center * 0.05 + Math.sin(clock.elapsedTime * 1.4 + i) * 0.008 * center, -Math.min(a, 2) * 0.08)
     g.scale.setScalar((0.82 + center * 0.4) * fade)
     g.visible = fade > 0.01
+    // de trois quarts, tournées vers le centre de la rangée ; celle du milieu se balance doucement
+    if (turn.current) turn.current.rotation.y = -0.5 - THREE.MathUtils.clamp(s, -2, 2) * 0.22 + Math.sin(clock.elapsedTime * 0.6) * 0.25 * center
   })
   const click = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()
@@ -258,7 +294,18 @@ function CapItem({ product, i, count, carousel }: { product: Product; i: number;
       <mesh position-y={0.08} material={M.chrome}>
         <cylinderGeometry args={[0.008, 0.008, 0.16, 8]} />
       </mesh>
-      {photo && <PhotoPlane photo={photo} height={0.2} anchor="bottom" position-y={0.12} />}
+      {has3D(product) ? (
+        <Suspense fallback={null}>
+          <Warm>
+            {/* posée sur son présentoir, visière légèrement relevée */}
+            <group ref={turn} position-y={0.135} rotation-x={-0.12}>
+              <VisitProduct product={product} height={0.2} />
+            </group>
+          </Warm>
+        </Suspense>
+      ) : (
+        <CapPhoto product={product} />
+      )}
     </group>
   )
 }

@@ -162,7 +162,7 @@ export function makePrintable(base: THREE.MeshPhysicalMaterial, ink: [number, nu
  * Tissu : couleur unie, relief de maille, duvet, plis ombrés, et jusqu'à deux impressions (devant, dos).
  * `repeat` : nombre de répétitions de la maille sur le dépliage (u, v).
  */
-export function createFabricMaterial(kind: FabricKind, repeat: [number, number]): FabricMaterial {
+export function createFabricMaterial(kind: FabricKind, repeat: [number, number], detail = true): FabricMaterial {
   return makePrintable(
     new THREE.MeshPhysicalMaterial({
       color: '#ffffff',
@@ -170,8 +170,8 @@ export function createFabricMaterial(kind: FabricKind, repeat: [number, number])
       metalness: 0,
       side: THREE.DoubleSide,
       aoMapIntensity: 1,
-      normalMap: reliefTexture(kind, repeat[0], repeat[1]),
-      normalScale: new THREE.Vector2(0.55, 0.55),
+      // de loin (visite), pas de relief de maille : plus fin qu'un pixel, il ne ferait que scintiller
+      ...(detail ? { normalMap: reliefTexture(kind, repeat[0], repeat[1]), normalScale: new THREE.Vector2(0.55, 0.55) } : {}),
       sheen: kind === 'toile' ? 0.35 : 0.8,
       sheenRoughness: 0.75,
       sheenColor: new THREE.Color('#ffffff'),
@@ -179,6 +179,21 @@ export function createFabricMaterial(kind: FabricKind, repeat: [number, number])
     [0.62, 0.25],
     [0.62, 0.45],
   )
+}
+
+/** Tissu sans impression ni carte d'ombres (capuche) : dépliage métrique, ombres dans les sommets. */
+export function createPlainFabricMaterial(kind: FabricKind, detail = true, vertexColors = true) {
+  return new THREE.MeshPhysicalMaterial({
+    color: '#ffffff',
+    roughness: 0.96,
+    side: THREE.DoubleSide,
+    vertexColors,
+    // dépliage en unités de 4 cm : une répétition de la maille par unité
+    ...(detail ? { normalMap: reliefTexture(kind, 0.04 / TILE[kind], 0.04 / TILE[kind]), normalScale: new THREE.Vector2(0.55, 0.55) } : {}),
+    sheen: 0.8,
+    sheenRoughness: 0.75,
+    sheenColor: new THREE.Color('#ffffff'),
+  })
 }
 
 /** Répétitions de la maille pour un vêtement déplié comme son patron (texture 2:1, `metersPerUv` par demi-largeur). */
@@ -205,13 +220,12 @@ export function createLacquerMaterial(): FabricMaterial {
 }
 
 /** Bord-côte (col, poignets) : même teinte que le vêtement, côtes en relief. Dépliage métrique (1 = 4 cm). */
-export function createRibMaterial() {
+export function createRibMaterial(detail = true) {
   return new THREE.MeshPhysicalMaterial({
     color: '#ffffff',
     roughness: 0.95,
     side: THREE.DoubleSide,
-    normalMap: reliefTexture('cote', 1, 1),
-    normalScale: new THREE.Vector2(0.9, 0.9),
+    ...(detail ? { normalMap: reliefTexture('cote', 1, 1), normalScale: new THREE.Vector2(0.9, 0.9) } : {}),
     sheen: 0.7,
     sheenRoughness: 0.75,
     sheenColor: new THREE.Color('#ffffff'),

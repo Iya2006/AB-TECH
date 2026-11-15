@@ -8,6 +8,8 @@ import { Interactive } from './Interactive'
 import { Glb, KeyboardSet, Monitor, ProductBox, Router, Tower } from './models/devices'
 import { Bottle, Cap, GiftBox, Mug, Tote, Tshirt, type GroupProps } from './models/products'
 import { PhotoPlane, PriceTag, useProductPhoto } from './PhotoProduct'
+import { has3D, VisitProduct } from './real/VisitProduct'
+import { Warm } from './Warm'
 import type { PrintImage } from './textures'
 
 /** Encre lisible sur la couleur du support (claire sur foncé, foncée sur clair). */
@@ -84,8 +86,20 @@ const PHOTO_HEIGHT: Partial<Record<Model, number>> = {
   boite: 0.26,
 }
 
+/** Produit sans modèle 3D réel : sa photo, sinon une forme simple. */
+function PhotoOrShape({ product, height }: { product: Product; height: number }) {
+  const photo = useProductPhoto(product)
+  return photo ? (
+    <PhotoPlane photo={photo} height={height} anchor="bottom" />
+  ) : (
+    <Suspense fallback={null}>
+      <ProductModel product={product} />
+    </Suspense>
+  )
+}
+
 /**
- * Article exposé : la vraie photo du produit (ou son modèle 3D à défaut), cliquable,
+ * Article exposé : le vrai modèle 3D du produit, sinon sa photo (ou une forme simple à défaut), cliquable,
  * avec une étiquette nom/prix nette qui apparaît quand on visite le poste.
  */
 export function ProductDisplay({
@@ -95,7 +109,7 @@ export function ProductDisplay({
   seed = 0,
   ...props
 }: GroupProps & { product: Product; height?: number; tag?: 'always' | 'hover' | false; seed?: number }) {
-  const photo = useProductPhoto(product)
+  const real = has3D(product)
   const [hover, setHover] = useState(false)
   const h = height ?? PHOTO_HEIGHT[product.model] ?? 0.3
   // l'étiquette pend d'un fil attaché devant la base du produit (bord de table, de socle, d'étagère) :
@@ -104,12 +118,15 @@ export function ProductDisplay({
   return (
     <group {...props} onPointerOver={() => setHover(true)} onPointerOut={() => setHover(false)}>
       <Interactive onSelect={() => useApp.getState().open({ type: 'product', id: product.id })}>
-        {photo ? (
-          <PhotoPlane photo={photo} height={h} anchor="bottom" />
-        ) : (
+        {real ? (
+          // le vrai modèle 3D, de trois quarts : son volume se lit mieux
           <Suspense fallback={null}>
-            <ProductModel product={product} />
+            <Warm>
+              <VisitProduct product={product} height={h} rotation-y={-0.45} />
+            </Warm>
           </Suspense>
+        ) : (
+          <PhotoOrShape product={product} height={h} />
         )}
       </Interactive>
       {(tag === 'always' || (tag === 'hover' && hover)) && <PriceTag product={product} station={product.station} position={tagAt} seed={seed} />}

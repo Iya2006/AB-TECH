@@ -113,6 +113,7 @@ export const accountRoutes =
           email: row.email ?? undefined,
           quantity: row.quantity ?? undefined,
           customization: row.customization ?? undefined,
+          details: row.details ?? undefined,
           mockupUrl: row.mockupUrl ?? undefined,
           logoUrl: row.logoUrl ?? undefined,
           service: row.service as AccountActivity['quotes'][number]['service'],

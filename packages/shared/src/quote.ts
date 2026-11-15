@@ -35,6 +35,39 @@ export const customizationSchema = z.object({
 })
 export type Customization = z.infer<typeof customizationSchema>
 
+/** Délai souhaité par le client. */
+export const QUOTE_DEADLINES = ['urgent', 'semaine', 'mois', 'flexible'] as const
+export type QuoteDeadline = (typeof QUOTE_DEADLINES)[number]
+export const DEADLINE_LABEL: Record<QuoteDeadline, string> = {
+  urgent: 'Dès que possible',
+  semaine: 'Sous une semaine',
+  mois: 'Dans le mois',
+  flexible: 'Pas pressé',
+}
+
+/** Remise de la commande. */
+export const QUOTE_DELIVERIES = ['retrait', 'livraison'] as const
+export type QuoteDelivery = (typeof QUOTE_DELIVERIES)[number]
+export const DELIVERY_LABEL: Record<QuoteDelivery, string> = { retrait: 'Retrait à l’atelier', livraison: 'Livraison' }
+
+/** Moyen de contact préféré pour la réponse. */
+export const QUOTE_CONTACTS = ['whatsapp', 'appel', 'email'] as const
+export type QuoteContact = (typeof QUOTE_CONTACTS)[number]
+export const CONTACT_LABEL: Record<QuoteContact, string> = { whatsapp: 'WhatsApp', appel: 'Appel', email: 'E-mail' }
+
+/** Précisions du devis guidé : toutes facultatives (les anciennes demandes n'en ont pas). */
+export const quoteDetailsSchema = z.object({
+  deadline: z.enum(QUOTE_DEADLINES).optional(),
+  /** Date de l'événement ou de livraison souhaitée (AAAA-MM-JJ). */
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
+    .optional(),
+  delivery: z.enum(QUOTE_DELIVERIES).optional(),
+  contact: z.enum(QUOTE_CONTACTS).optional(),
+})
+export type QuoteDetails = z.infer<typeof quoteDetailsSchema>
+
 const optionalText = (max: number) =>
   z
     .string()
@@ -63,6 +96,7 @@ export const quoteRequestSchema = z.object({
   quantity: z.coerce.number().int().min(1).max(100000).optional(),
   message: z.string().trim().min(10, 'Décrivez votre besoin en quelques mots').max(2000),
   customization: customizationSchema.optional(),
+  details: quoteDetailsSchema.optional(),
   mockupUrl: uploadedUrl,
   logoUrl: uploadedUrl,
   /** Champ piège anti-spam : doit rester vide. */

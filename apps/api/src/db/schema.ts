@@ -1,4 +1,4 @@
-import type { Customization, OrderItem, SiteSettings } from '@atelier/shared'
+import type { Customization, OrderItem, QuoteDetails, SiteSettings } from '@atelier/shared'
 import {
   boolean,
   index,
@@ -109,6 +109,8 @@ export const quoteRequests = pgTable(
     quantity: integer('quantity'),
     message: text('message').notNull(),
     customization: jsonb('customization').$type<Customization>(),
+    /** Précisions du devis guidé : délai, date, remise, moyen de contact préféré. */
+    details: jsonb('details').$type<QuoteDetails>(),
     mockupUrl: text('mockup_url'),
     logoUrl: text('logo_url'),
     createdAt: createdAt(),
