@@ -270,7 +270,9 @@ function Effects({ quality }: { quality: Quality }) {
   // Occlusion ambiante (N8AO) : réservée aux appareils puissants.
   return quality === 'high' ? (
     <EffectComposer multisampling={4}>
-      <N8AO aoRadius={0.6} distanceFalloff={0.6} intensity={2.2} halfRes />
+      {/* pleine résolution : le mode demi-résolution de N8AO plante avec cette version de Three.js
+          (cible de rendu multiple incompatible) et laissait la visite vide en qualité haute */}
+      <N8AO aoRadius={0.6} distanceFalloff={0.6} intensity={2.2} quality="medium" />
       <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.65} radius={0.7} />
       <ToneMapping mode={ToneMappingMode.NEUTRAL} />
       <Vignette offset={0.3} darkness={0.42} />

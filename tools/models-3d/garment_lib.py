@@ -91,7 +91,10 @@ def _tube(bm, p0, p1, r0, r1, count=48, segments=10):
         bmesh.ops.create_uvsphere(bm, u_segments=40, v_segments=20, radius=r * 0.999, matrix=__import__('mathutils').Matrix.Translation(center))
 
 
-# Buste taille M. z = 0 : bas du vêtement (hanches) ; le point d'épaule près du cou est vers z = 0,705.
+# Hauteur du point d'épaule (près du cou) du patron, une fois le vêtement posé sur le buste.
+SHOULDER_Z = 0.72
+
+# Buste taille M. z = 0 : hanches ; le point d'épaule près du cou est vers z = 0,705.
 TORSO = [
     # z, demi-largeur, demi-profondeur, décalage avant/arrière, carrure de la section
     (-0.30, 0.150, 0.105, 0.000, 2.3),
@@ -654,6 +657,17 @@ class Surface:
         return pos, nor
 
 
+def smooth_object(obj, levels=1):
+    """Subdivise une pièce rapportée (col, patte) pour arrondir ses facettes."""
+    mod = obj.modifiers.new('Lissage', 'SUBSURF')
+    mod.levels = levels
+    mod.render_levels = levels
+    mod.boundary_smooth = 'PRESERVE_CORNERS'
+    activate(obj)
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    return obj
+
+
 def _strip_mesh(name, rows, uvs, closed=False, flip=False):
     """Bande de quadrilatères entre des rangées de points (rows[i][k]) ; `uvs` : mêmes dimensions."""
     bm = bmesh.new()
@@ -704,7 +718,11 @@ def add_placket(obj, surface, top_z, length=0.13, width=0.034, buttons=(0.035, 0
             urow.append(surface.uv(x, z))
         rows.append(row)
         uvs.append(urow)
-    placket = _strip_mesh(name, rows, uvs, flip=True)
+    placket = _strip_mesh(name, rows, uvs)
+    # la face visible regarde vers l'extérieur du vêtement (sinon le site la traite comme un envers, plus sombre)
+    outward = surface.at(0.0, top_z - length / 2)[1]
+    if placket.data.polygons[len(placket.data.polygons) // 2].normal.dot(outward) < 0:
+        placket.data.flip_normals()
     # boutons : petits disques bombés, posés sur la patte
     bm = bmesh.new()
     for offset in buttons:
@@ -723,7 +741,7 @@ def add_placket(obj, surface, top_z, length=0.13, width=0.034, buttons=(0.035, 0
     return placket, new_object('Boutons', mesh)
 
 
-def add_polo_collar(obj, surface, stand=0.030, fall_back=0.058, fall_front=0.072, gap=0.010, tile=0.04, name='Col'):
+def add_polo_collar(obj, surface, stand=0.026, fall_back=0.056, fall_front=0.074, gap=0.010, tile=0.04, name='Col'):
     """
     Col de polo : pied de col qui monte le long du cou, puis tombant rabattu sur le vêtement, ouvert devant.
     Le tombant suit le tissu drapé (échantillonné dans le patron), avec ses deux pointes de part et d'autre de la patte.
@@ -778,15 +796,17 @@ def add_polo_collar(obj, surface, stand=0.030, fall_back=0.058, fall_front=0.072
         away.normalize()
         k_front = max(0.0, 1.0 - abs(x) / 0.05) if not back else 0.0
         fall = fall_back + (fall_front - fall_back) * k_front
-        up = (Vector((0, 0, 1)) * 0.92 + Vector((d.x, d.y, 0)) * 0.3).normalized()
-        row = [p + nrm * 0.0012, p + up * (stand * 0.55) + nrm * 0.002, p + up * stand + nrm * 0.004]
+        up = (Vector((0, 0, 1)) * 0.9 + Vector((d.x, d.y, 0)) * 0.42).normalized()
+        # pied de col plus bas devant (il rejoint la patte) que derrière
+        rise = stand * (1.0 if back else 0.55 + 0.45 * min(1.0, abs(x) / 0.08))
+        row = [p + nrm * 0.0012, p + up * (rise * 0.55) + nrm * 0.002, p + up * rise + nrm * 0.004]
         for frac, lift in ((0.10, 0.011), (0.32, 0.010), (0.62, 0.0065), (0.86, 0.0045), (1.0, 0.0032)):
             q = Vector((x, z)) + away * (fall * frac - 0.004)
             hit = surface.at(q.x, q.y, back)
             if hit is None:
                 hit = (p - d * (fall * frac), nrm)
             sp, sn = hit
-            row.append(sp + sn * lift + up * (stand * 0.35 * max(0.0, 1 - frac * 2.2)))
+            row.append(sp + sn * lift + up * (rise * 0.35 * max(0.0, 1 - frac * 2.2)))
         # bord roulé
         row.append(row[-1] - (row[-1] - row[-2]).normalized() * -0.0015 - nrm * 0.0026)
         across = [0.0]

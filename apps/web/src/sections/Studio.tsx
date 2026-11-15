@@ -19,12 +19,15 @@ import { CARD_STYLES, cardRef } from '../lib/cards'
 import { PHOTO, STUDIO_BG, tint, type PhotoModel } from '../lib/mockup/catalog'
 import { mockupCanvas, type MockupBase, type PrintSpec } from '../lib/mockup/engine'
 import { MockupView } from '../lib/mockup/MockupView'
+import { hasWebGL } from '../lib/device'
 import { FONT } from '../lib/print'
 import { scrollToElement } from '../lib/scroll'
 import { useSection } from '../lib/site'
 import { useApp } from '../lib/store'
+import type { GarmentModel, PrintSide } from '../three/real/Garment3D'
 import { useInView, useReveal } from '../ui/hooks'
 import { ArrowRight, CheckIcon, CloseIcon, Kicker, SplitTitle, UploadIcon } from '../ui/primitives'
+import type { Studio3DApi } from './Studio3D'
 
 /* ------------------------------------------------------------------ */
 /* Données                                                             */
@@ -144,10 +147,21 @@ const CAP_STYLES: Array<{ model: PhotoModel; label: string }> = [
   { model: 'trucker', label: 'Trucker (filet)' },
 ]
 
-const WEARERS: Array<{ id: Wearer; label: string }> = [
+/** Vue de l'aperçu : le produit en vraie 3D, ou une photo (porté par un homme, une femme, produit seul). */
+type View = '3d' | Wearer
+const WEARERS: Array<{ id: View; label: string }> = [
   { id: 'homme', label: 'Homme' },
   { id: 'femme', label: 'Femme' },
   { id: 'seul', label: 'Produit seul' },
+]
+const VIEW_3D: { id: View; label: string } = { id: '3d', label: 'Vue 3D' }
+
+/** Produits disponibles en vraie 3D (modèles simulés : tools/models-3d). */
+const MODEL_3D: Partial<Record<ProductKind, GarmentModel>> = { tshirt: 'tshirt', polo: 'polo' }
+
+const SIDES: Array<{ id: PrintSide; label: string }> = [
+  { id: 'front', label: 'Devant' },
+  { id: 'back', label: 'Dos' },
 ]
 
 const INKS = [
@@ -212,6 +226,7 @@ function loadSaved(): Partial<Saved> {
 }
 
 const CardStudio3D = lazy(() => import('./CardStudio3D'))
+const Studio3D = lazy(() => import('./Studio3D'))
 
 /* ------------------------------------------------------------------ */
 /* Petits éléments                                                     */
@@ -400,7 +415,13 @@ export function Studio() {
   const saved = useMemo(loadSaved, [])
   const [kind, setKind] = useState<ProductKind>(saved.kind && KINDS.includes(saved.kind) ? saved.kind : 'tshirt')
   const [capStyle, setCapStyle] = useState<PhotoModel>('casquette')
-  const [wearer, setWearer] = useState<Wearer>('homme')
+  // la 3D d'abord quand l'appareil la permet ; sinon les photos portées
+  const webgl = useMemo(hasWebGL, [])
+  const [view, setView] = useState<View>(webgl ? '3d' : 'homme')
+  const [face, setFace] = useState<PrintSide>('front')
+  const studio3d = useRef<Studio3DApi | null>(null)
+  /** Modèle 3D actuellement affiché (null : en cours de chargement). */
+  const [loaded3d, setLoaded3d] = useState<GarmentModel | null>(null)
   const [base, setBase] = useState(saved.base ?? PRODUCTS.tshirt.colors[0]!.c)
   const [ink, setInk] = useState(saved.ink ?? '#0e0e10')
   const [text, setText] = useState(saved.text ?? BRAND.name)
@@ -447,7 +468,11 @@ export function Studio() {
   const model: PhotoModel | null = isCard ? null : kind === 'casquette' ? capStyle : kind
   const entry = model ? PHOTO[model] : null
   const canWear = !!entry?.homme
-  const shownWearer: Wearer = canWear ? wearer : 'seul'
+  const model3d = !isCard && webgl ? MODEL_3D[kind] : undefined
+  const is3d = view === '3d' && !!model3d
+  const onReady3d = useCallback(() => setLoaded3d(model3d ?? null), [model3d])
+  const shownWearer: Wearer = view === '3d' ? (model3d || !canWear ? 'seul' : 'homme') : canWear ? view : 'seul'
+  const shownView: View = is3d ? '3d' : shownWearer
   const mockBase = entry ? (shownWearer === 'seul' ? entry.produit : entry[shownWearer] ?? entry.produit) : null
   const fit = shownWearer === 'seul' ? 'contain' : 'cover'
   const style = CARD_STYLES[cardIndex]!
@@ -557,6 +582,7 @@ export function Studio() {
       const r = gl.current
       return r ? new Promise((res) => r.domElement.toBlob(res, 'image/jpeg', 0.9)) : null
     }
+    if (is3d) return studio3d.current?.capture() ?? null
     if (!mockBase || !entry) return null
     const c = await mockupCanvas(mockBase, { color: tint(entry, mockBase, base), print, background: STUDIO_BG })
     return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.9))
@@ -573,7 +599,9 @@ export function Studio() {
     setTimeout(() => URL.revokeObjectURL(url), 2000)
   }
 
-  const presetLabel = product?.presets.find((p) => p.id === presetId)?.label ?? `Personnalisé · ${Math.round(place.s * 100)} %`
+  const presetName = product?.presets.find((p) => p.id === presetId)?.label ?? `Personnalisé · ${Math.round(place.s * 100)} %`
+  // le dos n'existe qu'en 3D (les photos montrent le devant)
+  const presetLabel = is3d && face === 'back' ? `Dos · ${presetName}` : presetName
 
   const attach = async () => {
     setBusy(true)
@@ -587,7 +615,7 @@ export function Studio() {
         baseColor: base,
         inkColor: ink,
         style: isCard ? cardRef(style) : kind === 'casquette' ? CAP_STYLES.find((c) => c.model === capStyle)?.label : undefined,
-        wearer: isCard || !canWear ? undefined : shownWearer,
+        wearer: isCard || !canWear || is3d ? undefined : shownWearer,
         card: isCard ? card : undefined,
         sub: isCard ? undefined : sub.trim() || undefined,
         font: isCard ? undefined : font.label,
@@ -658,7 +686,20 @@ export function Studio() {
               style={{ background: 'radial-gradient(circle at 50% 38%, #f7f9fc, #d9e1ec)' }}
               {...(isCard ? { onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp } : {})}
             >
-              {!isCard && mockBase && entry && (
+              {is3d && mounted && (
+                <Suspense fallback={<span className="absolute inset-0 m-auto size-8 animate-spin rounded-full border-2 border-ink/15 border-t-accent" aria-hidden />}>
+                  <Studio3D model={model3d!} color={base} print={print} place={place} side={face} onPlace={(p) => movePlace(fitPlace(p))} zoom={zoom} guide={tab === 'visuel'} active={visible} api={studio3d} onReady={onReady3d} />
+                </Suspense>
+              )}
+              {is3d && loaded3d !== model3d && (
+                <div className="pointer-events-none absolute inset-0 grid place-items-center" role="status">
+                  <span className="flex flex-col items-center gap-3 text-[13px] font-semibold text-ink/50">
+                    <span className="size-8 animate-spin rounded-full border-2 border-ink/15 border-t-accent" aria-hidden />
+                    Chargement du modèle 3D…
+                  </span>
+                </div>
+              )}
+              {!isCard && !is3d && mockBase && entry && (
                 <div className="absolute inset-0 transition-transform duration-700 ease-[var(--ease-expo)]" style={{ transform: `scale(${zoomScale})`, transformOrigin: zoomOrigin }}>
                   <MockupView
                     key={`${kind}-${model}-${shownWearer}`}
@@ -679,17 +720,24 @@ export function Studio() {
               )}
 
               {/* Contrôles posés sur l'aperçu */}
-              <div className="absolute inset-x-4 top-4 flex flex-wrap items-start justify-between gap-2">
+              <div className="pointer-events-none absolute inset-x-4 top-4 flex flex-wrap items-start justify-between gap-2 [&>*]:pointer-events-auto">
                 {kind === 'casquette' && (
                   <Segmented label="Type de casquette" items={CAP_STYLES.map((c) => ({ id: c.model, label: c.label }))} value={capStyle} onChange={(v) => (setCapStyle(v), changed())} />
                 )}
-                {!isCard && kind !== 'mug' && kind !== 'tote' && (
-                  <Segmented label="Porté par" items={WEARERS} value={shownWearer} onChange={(v) => (setWearer(v), changed())} disabled={(id) => id !== 'seul' && !canWear} />
+                {!isCard && (model3d || (kind !== 'mug' && kind !== 'tote')) && (
+                  <Segmented
+                    label="Vue"
+                    items={model3d ? [VIEW_3D, ...WEARERS] : WEARERS}
+                    value={shownView}
+                    onChange={(v) => (setView(v), setZoom(false), changed())}
+                    disabled={(id) => (id === 'homme' || id === 'femme') && !canWear}
+                  />
                 )}
+                {is3d && <Segmented label="Côté du marquage" items={SIDES} value={face} onChange={(v) => (setFace(v), changed())} />}
                 {isCard && <span className="rounded-full bg-white/90 px-4 py-2 font-mono text-[12px] font-semibold tracking-wide shadow-sm ring-1 ring-ink/10">Réf. {style.ref} · {style.label}</span>}
               </div>
               {!isCard && (
-                <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-end justify-between gap-2">
+                <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap items-end justify-between gap-2 [&>*]:pointer-events-auto">
                   <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Emplacement du marquage">
                     {product!.presets.map((p) => (
                       <button
@@ -740,7 +788,11 @@ export function Studio() {
               )}
             </div>
             <p className="kicker mt-3 text-ink/45">
-              {isCard ? 'Glissez pour changer de style · touchez la carte pour la retourner' : 'Faites glisser le visuel, la poignée bleue l’agrandit · photo réelle, aperçu non contractuel'}
+              {isCard
+                ? 'Glissez pour changer de style · touchez la carte pour la retourner'
+                : is3d
+                  ? 'Faites tourner le vêtement · glissez le visuel pour le placer · modèle 3D, aperçu non contractuel'
+                  : 'Faites glisser le visuel, la poignée bleue l’agrandit · photo réelle, aperçu non contractuel'}
             </p>
           </div>
 

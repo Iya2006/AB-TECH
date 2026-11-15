@@ -55,8 +55,11 @@ interface GarmentPart {
 
 interface GarmentAsset {
   fabric: GarmentPart
-  rib: GarmentPart | null
+  /** Pièces rapportées : bords-côtes, col, boutons… (une par matière). */
+  parts: Array<GarmentPart & { kind: 'cote' | 'bouton' }>
   meta: GarmentMeta
+  /** Encombrement réel du vêtement, en mètres (bas du vêtement à y = 0). */
+  bounds: THREE.Box3
 }
 
 /** Géométries et réglages d'un vêtement (partagés entre toutes ses copies). */
@@ -65,8 +68,9 @@ export function useGarmentAsset(model: GarmentModel): GarmentAsset {
   const gltf = useGLTF(garmentUrl(model), false, true)
   return useMemo(() => {
     let fabric: GarmentPart | null = null
-    let rib: GarmentPart | null = null
+    const parts: GarmentAsset['parts'] = []
     let meta: GarmentMeta | null = null
+    const bounds = new THREE.Box3()
     gltf.scene.updateMatrixWorld(true)
     gltf.scene.traverse((o) => {
       const raw = (o.userData as { abtech?: string }).abtech
@@ -74,11 +78,15 @@ export function useGarmentAsset(model: GarmentModel): GarmentAsset {
       const mesh = o as THREE.Mesh
       if (!mesh.isMesh) return
       const part = { geometry: mesh.geometry, matrix: mesh.matrixWorld.clone() }
-      if ((mesh.material as THREE.Material).name.startsWith('cote')) rib = part
+      const name = (mesh.material as THREE.Material).name
+      if (name.startsWith('cote')) parts.push({ ...part, kind: 'cote' })
+      else if (name.startsWith('bouton')) parts.push({ ...part, kind: 'bouton' })
       else fabric = part
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
+      bounds.union(mesh.geometry.boundingBox!.clone().applyMatrix4(mesh.matrixWorld))
     })
     if (!fabric || !meta) throw new Error(`Modèle 3D incomplet : ${model}`)
-    return { fabric, rib, meta }
+    return { fabric, parts, meta, bounds }
   }, [gltf, model])
 }
 
@@ -108,24 +116,49 @@ export function zoneAt(meta: GarmentMeta, uv: THREE.Vector2): PrintSide | null {
 
 type GroupProps = Omit<ThreeElements['group'], 'children'>
 
+const FULL_ZONE: Place = { x: 0.5, y: 0.5, s: 1 }
+
 export function Garment3D({
   model,
   color,
   front = null,
   back = null,
+  guide = null,
   shadows = true,
   ...props
-}: GroupProps & { model: GarmentModel; color: string; front?: PrintLayer | null; back?: PrintLayer | null; shadows?: boolean }) {
-  const { fabric, rib, meta } = useGarmentAsset(model)
+}: GroupProps & {
+  model: GarmentModel
+  color: string
+  front?: PrintLayer | null
+  back?: PrintLayer | null
+  /** Affiche en pointillés la zone imprimable du devant ou du dos. */
+  guide?: PrintSide | null
+  shadows?: boolean
+}) {
+  const { fabric, parts, meta } = useGarmentAsset(model)
   const ao = useTexture(aoUrl(model))
-  const materials = useMemo(() => ({ fabric: createFabricMaterial(FABRIC[model], meta.metersPerUv), rib: createRibMaterial() }), [model, meta])
+  const materials = useMemo(
+    () => ({
+      fabric: createFabricMaterial(FABRIC[model], meta.metersPerUv),
+      cote: createRibMaterial(),
+      bouton: new THREE.MeshPhysicalMaterial({ color: '#f1efe9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
+    }),
+    [model, meta],
+  )
   useEffect(
     () => () => {
       materials.fabric.dispose()
-      materials.rib.dispose()
+      materials.cote.dispose()
+      materials.bouton.dispose()
     },
     [materials],
   )
+
+  useLayoutEffect(() => {
+    const u = materials.fabric.userData.fabric
+    u.uGuideColor.value.w = guide ? 0.9 : 0
+    if (guide) printRect(meta.zones[guide], FULL_ZONE, u.uGuide.value)
+  }, [guide, materials, meta])
 
   useLayoutEffect(() => {
     // même convention que le modèle (origine de l'image en haut à gauche)
@@ -138,7 +171,9 @@ export function Garment3D({
 
   useLayoutEffect(() => {
     tintFabric(materials.fabric, color)
-    tintFabric(materials.rib, color)
+    tintFabric(materials.cote, color)
+    // boutons ton sur ton, un peu plus clairs (nacre sur les teintes sombres)
+    materials.bouton.color.set(color).lerp(new THREE.Color('#f4f2ec'), 0.55)
   }, [color, materials])
 
   useLayoutEffect(() => {
@@ -152,7 +187,9 @@ export function Garment3D({
   return (
     <group {...props}>
       <mesh geometry={fabric.geometry} matrix={fabric.matrix} matrixAutoUpdate={false} material={materials.fabric} castShadow={shadows} receiveShadow={shadows} userData={{ garment: meta }} />
-      {rib && <mesh geometry={rib.geometry} matrix={rib.matrix} matrixAutoUpdate={false} material={materials.rib} castShadow={shadows} />}
+      {parts.map((part, i) => (
+        <mesh key={i} geometry={part.geometry} matrix={part.matrix} matrixAutoUpdate={false} material={materials[part.kind]} castShadow={shadows} receiveShadow={shadows} />
+      ))}
     </group>
   )
 }

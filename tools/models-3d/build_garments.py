@@ -71,6 +71,7 @@ def long_sleeve(length, drop, neck=0.095, sleeve=0.58, chest=0.285, hem=0.255, b
 
 GARMENTS = {
     'tshirt': dict(
+        length=0.72,
         front=lambda: short_sleeve(0.72, 0.095),
         back=lambda: short_sleeve(0.72, 0.022),
         fabric='jersey',
@@ -83,6 +84,7 @@ GARMENTS = {
         zones=dict(front=(0.0, 0.185, 0.30, 0.40), back=(0.0, 0.24, 0.30, 0.40)),
     ),
     'polo': dict(
+        length=0.72,
         front=lambda: short_sleeve(0.72, 0.082, neck=0.086, sleeve=0.195),
         back=lambda: short_sleeve(0.72, 0.020, neck=0.086, sleeve=0.195),
         fabric='jersey',
@@ -95,8 +97,9 @@ GARMENTS = {
         zones=dict(front=(0.0, 0.185, 0.30, 0.40), back=(0.0, 0.24, 0.30, 0.40)),
     ),
     'pull': dict(
-        front=lambda: long_sleeve(0.66, 0.088),
-        back=lambda: long_sleeve(0.66, 0.024),
+        length=0.68,
+        front=lambda: long_sleeve(0.68, 0.088),
+        back=lambda: long_sleeve(0.68, 0.024),
         fabric='molleton',
         step=0.012,
         frames=130,
@@ -104,7 +107,7 @@ GARMENTS = {
         ribs=[dict(flag='neck', profile=CREW_RIB_WIDE, lift=0.25), dict(flag='cuff', profile=LONG_RIB), dict(flag='hem', profile=LONG_RIB)],
         hems=[],
         stitches=[('neck', (0.005,))],
-        zones=dict(front=(0.0, 0.135, 0.30, 0.40), back=(0.0, 0.19, 0.30, 0.40)),
+        zones=dict(front=(0.0, 0.155, 0.30, 0.40), back=(0.0, 0.21, 0.30, 0.40)),
     ),
 }
 
@@ -124,7 +127,8 @@ def build(name):
     else:
         g.reset_scene()
         body = g.make_body(arm_angle=float(os.environ.get('ARM', spec.get('arm_angle', 44))))
-        obj = g.make_garment(name, spec['front'](), spec['back'](), step=float(os.environ.get('STEP', spec['step'])))
+        # le point d'épaule du patron est posé à la hauteur des épaules du buste, quelle que soit la longueur
+        obj = g.make_garment(name, spec['front'](), spec['back'](), step=float(os.environ.get('STEP', spec['step'])), z0=g.SHOULDER_Z - spec['length'])
         obj.data.materials.append(g.fabric_material('tissu'))
         g.add_cloth(obj, spec['fabric'], self_collision=os.environ.get('SELF', '1') == '1')
         g.simulate(obj, spec['frames'], log=lambda f: print('  image', f, round(time.time() - t0, 1), 's', flush=True))
@@ -146,10 +150,11 @@ def build(name):
     late = []  # posés après le calcul des ombres (ils recouvrent le tissu de trop près)
     if spec.get('polo'):
         surface = g.Surface(obj)
-        collar = g.add_polo_collar(obj, surface)
+        collar = g.smooth_object(g.add_polo_collar(obj, surface))
         collar.data.materials.append(rib_mat)
         extras.append(collar)
-        placket, buttons = g.add_placket(obj, surface, top_z=0.72 - spec['polo']['drop'])
+        placket, buttons = g.add_placket(obj, surface, top_z=spec['length'] - spec['polo']['drop'])
+        g.smooth_object(placket)
         placket.data.materials.append(obj.data.materials[0])
         buttons.data.materials.append(g.fabric_material('bouton', (0.9, 0.9, 0.88, 1)))
         placket.hide_render = buttons.hide_render = True
@@ -185,6 +190,11 @@ def build(name):
     for o in extras + late:
         o.select_set(True)
     bpy.ops.object.join()
+    # le bas du vêtement (bord-côte compris) à la hauteur zéro
+    low = min(v.co.z for v in obj.data.vertices)
+    for v in obj.data.vertices:
+        v.co.z -= low
+    meta['height'] = round(top - low, 3)
     obj['abtech'] = json.dumps(meta)
     g.activate(obj)
     bpy.ops.export_scene.gltf(

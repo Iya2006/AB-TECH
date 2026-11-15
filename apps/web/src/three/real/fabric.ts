@@ -54,6 +54,9 @@ export interface FabricUniforms {
   uInk: { value: THREE.Vector2 }
   /** Assombrissement de l'envers du tissu, et part de l'occlusion appliquée aussi à la lumière directe. */
   uShade: { value: THREE.Vector2 }
+  /** Repère de la zone imprimable (pointillés) : rectangle dans le dépliage, couleur et opacité (0 : masqué). */
+  uGuide: { value: THREE.Vector4 }
+  uGuideColor: { value: THREE.Vector4 }
 }
 
 export type FabricMaterial = THREE.MeshPhysicalMaterial & { userData: { fabric: FabricUniforms } }
@@ -65,7 +68,20 @@ uniform vec4 uRectFront;
 uniform vec4 uRectBack;
 uniform vec2 uInk;
 uniform vec2 uShade;
+uniform vec4 uGuide;
+uniform vec4 uGuideColor;
 float abInk = 0.0;
+// contour en pointillés d'un rectangle du dépliage, d'épaisseur constante à l'écran
+float abGuide(vec4 rect, vec2 uv) {
+  vec2 g = (uv - rect.xy) / rect.zw;
+  vec2 t = fwidth(g) * 1.6;
+  vec2 d = min(g, 1.0 - g);
+  float lx = (1.0 - smoothstep(0.0, t.x, abs(d.x))) * step(-t.y, d.y);
+  float ly = (1.0 - smoothstep(0.0, t.y, abs(d.y))) * step(-t.x, d.x);
+  // le dépliage est deux fois plus large que haut : tirets réguliers le long des quatre côtés
+  float dash = step(0.5, fract((g.x * rect.z * 2.0 + g.y * rect.w) * 55.0));
+  return max(lx, ly) * dash;
+}
 vec4 abPrint(sampler2D map, vec4 rect, vec2 uv) {
   vec2 p = (uv - rect.xy) / rect.zw;
   vec4 c = texture2D(map, p);
@@ -85,6 +101,7 @@ const FRAG_COLOR = /* glsl */ `
     diffuseColor.rgb = mix(diffuseColor.rgb, pb.rgb, pb.a);
     abInk = max(pf.a, pb.a);
     diffuseColor.rgb *= mix(1.0, abAo, uShade.y);
+    if (uGuideColor.a > 0.0) diffuseColor.rgb = mix(diffuseColor.rgb, uGuideColor.rgb, abGuide(uGuide, vAoMapUv) * uGuideColor.a);
   } else {
     diffuseColor.rgb *= uShade.x * mix(1.0, abAo, 0.5);
   }
@@ -118,6 +135,8 @@ export function createFabricMaterial(kind: FabricKind, metersPerUv: number): Fab
     uRectBack: { value: new THREE.Vector4(0, 0, 1, 1) },
     uInk: { value: new THREE.Vector2(0.62, 0.25) },
     uShade: { value: new THREE.Vector2(0.62, 0.45) },
+    uGuide: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uGuideColor: { value: new THREE.Vector4(0.145, 0.388, 0.922, 0) },
   }
   material.userData.fabric = uniforms
   material.onBeforeCompile = (shader) => {

@@ -1,9 +1,10 @@
-import { ContactShadows, Environment, Lightformer, OrbitControls } from '@react-three/drei'
+import { ContactShadows, OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { BRAND } from '../config/brand'
 import { drawPrint } from '../lib/print'
+import { StudioLights } from '../sections/Studio3D'
 import { Garment3D, type GarmentModel } from '../three/real/Garment3D'
 
 /**
@@ -65,14 +66,7 @@ export default function Lab3D() {
     <div style={{ position: 'fixed', inset: 0, background: '#e9edf2' }}>
       <Canvas shadows dpr={[1, 2]} camera={{ position, fov: 30, near: 0.05, far: 50 }} gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping }}>
         <color attach="background" args={['#e9edf2']} />
-        <Environment resolution={256} frames={1} environmentIntensity={1}>
-          <color attach="background" args={['#aeb6c2']} />
-          <Lightformer form="rect" intensity={5} position={[-2.5, 3.2, 3]} scale={[4, 3, 1]} target={[0, 0.4, 0]} />
-          <Lightformer form="rect" intensity={1.6} position={[3.5, 1.5, 1.5]} scale={[3, 4, 1]} target={[0, 0.4, 0]} />
-          <Lightformer form="rect" intensity={3} position={[1, 2.5, -3.5]} scale={[4, 2, 1]} target={[0, 0.4, 0]} />
-          <Lightformer form="rect" intensity={0.6} position={[0, -2, 0]} scale={[6, 6, 1]} target={[0, 0.4, 0]} color="#dfe6ee" />
-        </Environment>
-        <directionalLight position={[-2.2, 3.4, 2.6]} intensity={1.4} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0003} shadow-normalBias={0.02} shadow-camera-left={-1} shadow-camera-right={1} shadow-camera-top={1.2} shadow-camera-bottom={-0.6} />
+        <StudioLights />
         <Suspense fallback={null}>
           <Garment3D model={model} color={color} front={q.get('side') === 'back' ? null : print} back={q.get('side') === 'back' ? print : null} />
         </Suspense>

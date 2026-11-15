@@ -159,7 +159,7 @@ function printLayer(area: PrintArea, pw: number, ph: number, spec: PrintSpec) {
  * Broderie : fils obliques (le point plat) et léger relief sur les bords du motif.
  * Appliqué au calque à plat, avant qu'il ne suive les plis du tissu.
  */
-function embroider(d: Uint8ClampedArray, w: number, h: number) {
+export function embroider(d: Uint8ClampedArray, w: number, h: number) {
   const alpha = new Float32Array(w * h)
   for (let i = 0; i < w * h; i++) alpha[i] = d[i * 4 + 3]! / 255
   const period = Math.max(2.5, w / 110)
