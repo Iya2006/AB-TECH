@@ -34,6 +34,21 @@ export function reliefTexture(name: FabricKind | 'cote', repeatX: number, repeat
   return tex
 }
 
+/** Texture de découpe répétable (filet). */
+export function alphaTexture(name: string, repeatX: number, repeatY: number) {
+  const key = `a:${name}:${repeatX}:${repeatY}`
+  let tex = textures.get(key)
+  if (!tex) {
+    tex = loader.load(`${BASE}/tex/${name}-a.webp`)
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(repeatX, repeatY)
+    tex.colorSpace = THREE.NoColorSpace
+    tex.anisotropy = 4
+    textures.set(key, tex)
+  }
+  return tex
+}
+
 function pixel(r: number, g: number, b: number, a: number) {
   const tex = new THREE.DataTexture(new Uint8Array([r, g, b, a]), 1, 1, THREE.RGBAFormat)
   tex.needsUpdate = true
@@ -109,32 +124,21 @@ const FRAG_COLOR = /* glsl */ `
 `
 
 /**
- * Tissu : couleur unie, relief de maille, duvet, plis ombrés, et jusqu'à deux impressions (devant, dos).
- * `metersPerUv` : échelle du dépliage (voir tools/models-3d) ; elle règle la taille de la maille.
+ * Rend une matière « imprimable » : jusqu'à deux visuels (devant, dos) posés dans le dépliage, ombres des plis
+ * appliquées aussi à la lumière directe, envers assombri, repère de la zone imprimable.
+ * `ink` : rugosité de l'encre et part de duvet qu'elle laisse passer ; `shade` : envers, occlusion directe.
  */
-export function createFabricMaterial(kind: FabricKind, metersPerUv: number): FabricMaterial {
-  const tile = TILE[kind]
-  const material = new THREE.MeshPhysicalMaterial({
-    color: '#ffffff',
-    roughness: kind === 'toile' ? 0.92 : 0.96,
-    metalness: 0,
-    side: THREE.DoubleSide,
-    aoMap: NO_AO,
-    aoMapIntensity: 1,
-    // le dépliage est deux fois plus large que haut : u couvre 2 × metersPerUv, v couvre metersPerUv
-    normalMap: reliefTexture(kind, (2 * metersPerUv) / tile, metersPerUv / tile),
-    normalScale: new THREE.Vector2(0.55, 0.55),
-    sheen: kind === 'toile' ? 0.35 : 0.8,
-    sheenRoughness: 0.75,
-    sheenColor: new THREE.Color('#ffffff'),
-  }) as FabricMaterial
+export function makePrintable(base: THREE.MeshPhysicalMaterial, ink: [number, number], shade: [number, number]): FabricMaterial {
+  const material = base as FabricMaterial
+  // la carte d'occlusion (même vide) donne au shader les coordonnées du dépliage
+  if (!material.aoMap) material.aoMap = NO_AO
   const uniforms: FabricUniforms = {
     uPrintFront: { value: NO_PRINT },
     uPrintBack: { value: NO_PRINT },
     uRectFront: { value: new THREE.Vector4(0, 0, 1, 1) },
     uRectBack: { value: new THREE.Vector4(0, 0, 1, 1) },
-    uInk: { value: new THREE.Vector2(0.62, 0.25) },
-    uShade: { value: new THREE.Vector2(0.62, 0.45) },
+    uInk: { value: new THREE.Vector2(ink[0], ink[1]) },
+    uShade: { value: new THREE.Vector2(shade[0], shade[1]) },
     uGuide: { value: new THREE.Vector4(0, 0, 1, 1) },
     uGuideColor: { value: new THREE.Vector4(0.145, 0.388, 0.922, 0) },
   }
@@ -152,6 +156,52 @@ export function createFabricMaterial(kind: FabricKind, metersPerUv: number): Fab
   }
   material.customProgramCacheKey = () => 'abtech-fabric'
   return material
+}
+
+/**
+ * Tissu : couleur unie, relief de maille, duvet, plis ombrés, et jusqu'à deux impressions (devant, dos).
+ * `repeat` : nombre de répétitions de la maille sur le dépliage (u, v).
+ */
+export function createFabricMaterial(kind: FabricKind, repeat: [number, number]): FabricMaterial {
+  return makePrintable(
+    new THREE.MeshPhysicalMaterial({
+      color: '#ffffff',
+      roughness: kind === 'toile' ? 0.92 : 0.96,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      aoMapIntensity: 1,
+      normalMap: reliefTexture(kind, repeat[0], repeat[1]),
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      sheen: kind === 'toile' ? 0.35 : 0.8,
+      sheenRoughness: 0.75,
+      sheenColor: new THREE.Color('#ffffff'),
+    }),
+    [0.62, 0.25],
+    [0.62, 0.45],
+  )
+}
+
+/** Répétitions de la maille pour un vêtement déplié comme son patron (texture 2:1, `metersPerUv` par demi-largeur). */
+export function patternRepeat(kind: FabricKind, metersPerUv: number): [number, number] {
+  return [(2 * metersPerUv) / TILE[kind], metersPerUv / TILE[kind]]
+}
+
+/** Céramique émaillée (mug) : l'impression est prise sous l'émail, aussi brillante que le reste. */
+export function createCeramicMaterial(): FabricMaterial {
+  return makePrintable(
+    new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.16, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, side: THREE.DoubleSide }),
+    [0.16, 1],
+    [0.92, 0],
+  )
+}
+
+/** Métal laqué (gourde) : légèrement satiné, l'encre un peu plus mate que la laque. */
+export function createLacquerMaterial(): FabricMaterial {
+  return makePrintable(
+    new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.34, metalness: 0.55, clearcoat: 0.5, clearcoatRoughness: 0.28 }),
+    [0.5, 1],
+    [1, 0],
+  )
 }
 
 /** Bord-côte (col, poignets) : même teinte que le vêtement, côtes en relief. Dépliage métrique (1 = 4 cm). */

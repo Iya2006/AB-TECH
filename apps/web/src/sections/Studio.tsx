@@ -24,7 +24,7 @@ import { FONT } from '../lib/print'
 import { scrollToElement } from '../lib/scroll'
 import { useSection } from '../lib/site'
 import { useApp } from '../lib/store'
-import type { GarmentModel, PrintSide } from '../three/real/Garment3D'
+import { HAS_BACK, type Model3D, type PrintSide } from '../three/real/Product3D'
 import { useInView, useReveal } from '../ui/hooks'
 import { ArrowRight, CheckIcon, CloseIcon, Kicker, SplitTitle, UploadIcon } from '../ui/primitives'
 import type { Studio3DApi } from './Studio3D'
@@ -155,9 +155,10 @@ const WEARERS: Array<{ id: View; label: string }> = [
   { id: 'seul', label: 'Produit seul' },
 ]
 const VIEW_3D: { id: View; label: string } = { id: '3d', label: 'Vue 3D' }
+const VIEW_PHOTO: { id: View; label: string } = { id: 'seul', label: 'Photo' }
 
-/** Produits disponibles en vraie 3D (modèles simulés : tools/models-3d). */
-const MODEL_3D: Partial<Record<ProductKind, GarmentModel>> = { tshirt: 'tshirt', polo: 'polo' }
+/** Produits disponibles en vraie 3D (modèles simulés ou modélisés : tools/models-3d). La casquette suit son type. */
+const MODEL_3D: Partial<Record<ProductKind, Model3D>> = { tshirt: 'tshirt', polo: 'polo', mug: 'mug', tote: 'tote' }
 
 const SIDES: Array<{ id: PrintSide; label: string }> = [
   { id: 'front', label: 'Devant' },
@@ -421,7 +422,7 @@ export function Studio() {
   const [face, setFace] = useState<PrintSide>('front')
   const studio3d = useRef<Studio3DApi | null>(null)
   /** Modèle 3D actuellement affiché (null : en cours de chargement). */
-  const [loaded3d, setLoaded3d] = useState<GarmentModel | null>(null)
+  const [loaded3d, setLoaded3d] = useState<Model3D | null>(null)
   const [base, setBase] = useState(saved.base ?? PRODUCTS.tshirt.colors[0]!.c)
   const [ink, setInk] = useState(saved.ink ?? '#0e0e10')
   const [text, setText] = useState(saved.text ?? BRAND.name)
@@ -468,8 +469,11 @@ export function Studio() {
   const model: PhotoModel | null = isCard ? null : kind === 'casquette' ? capStyle : kind
   const entry = model ? PHOTO[model] : null
   const canWear = !!entry?.homme
-  const model3d = !isCard && webgl ? MODEL_3D[kind] : undefined
+  const model3d: Model3D | undefined = isCard || !webgl ? undefined : kind === 'casquette' ? (capStyle as Model3D) : MODEL_3D[kind]
   const is3d = view === '3d' && !!model3d
+  // le dos ne s'imprime que sur certains produits (pas une casquette)
+  const canBack = !!model3d && HAS_BACK[model3d]
+  const shownFace: PrintSide = canBack ? face : 'front'
   const onReady3d = useCallback(() => setLoaded3d(model3d ?? null), [model3d])
   const shownWearer: Wearer = view === '3d' ? (model3d || !canWear ? 'seul' : 'homme') : canWear ? view : 'seul'
   const shownView: View = is3d ? '3d' : shownWearer
@@ -601,7 +605,7 @@ export function Studio() {
 
   const presetName = product?.presets.find((p) => p.id === presetId)?.label ?? `Personnalisé · ${Math.round(place.s * 100)} %`
   // le dos n'existe qu'en 3D (les photos montrent le devant)
-  const presetLabel = is3d && face === 'back' ? `Dos · ${presetName}` : presetName
+  const presetLabel = is3d && shownFace === 'back' ? `Dos · ${presetName}` : presetName
 
   const attach = async () => {
     setBusy(true)
@@ -688,7 +692,7 @@ export function Studio() {
             >
               {is3d && mounted && (
                 <Suspense fallback={<span className="absolute inset-0 m-auto size-8 animate-spin rounded-full border-2 border-ink/15 border-t-accent" aria-hidden />}>
-                  <Studio3D model={model3d!} color={base} print={print} place={place} side={face} onPlace={(p) => movePlace(fitPlace(p))} zoom={zoom} guide={tab === 'visuel'} active={visible} api={studio3d} onReady={onReady3d} />
+                  <Studio3D model={model3d!} color={base} print={print} place={place} side={shownFace} onPlace={(p) => movePlace(fitPlace(p))} zoom={zoom} guide={tab === 'visuel'} active={visible} api={studio3d} onReady={onReady3d} />
                 </Suspense>
               )}
               {is3d && loaded3d !== model3d && (
@@ -727,13 +731,13 @@ export function Studio() {
                 {!isCard && (model3d || (kind !== 'mug' && kind !== 'tote')) && (
                   <Segmented
                     label="Vue"
-                    items={model3d ? [VIEW_3D, ...WEARERS] : WEARERS}
+                    items={model3d ? [VIEW_3D, ...(canWear ? WEARERS.filter((w) => w.id !== 'seul') : []), VIEW_PHOTO] : WEARERS}
                     value={shownView}
                     onChange={(v) => (setView(v), setZoom(false), changed())}
                     disabled={(id) => (id === 'homme' || id === 'femme') && !canWear}
                   />
                 )}
-                {is3d && <Segmented label="Côté du marquage" items={SIDES} value={face} onChange={(v) => (setFace(v), changed())} />}
+                {is3d && canBack && <Segmented label="Côté du marquage" items={SIDES} value={shownFace} onChange={(v) => (setFace(v), changed())} />}
                 {isCard && <span className="rounded-full bg-white/90 px-4 py-2 font-mono text-[12px] font-semibold tracking-wide shadow-sm ring-1 ring-ink/10">Réf. {style.ref} · {style.label}</span>}
               </div>
               {!isCard && (

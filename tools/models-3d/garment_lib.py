@@ -280,7 +280,7 @@ def build_outline(segments, step):
 EDGE = {'hem': 1, 'cuff': 2, 'neck': 4, 'hood': 8, 'pocket': 16}
 
 
-def make_garment(name, front_segments, back_segments, step=0.012, y_front=-0.16, y_back=0.135, z0=0.0):
+def make_garment(name, front_segments, back_segments, step=0.012, y_front=-0.16, y_back=0.135, z0=0.0, shape=None):
     """
     Les deux pièces à plat, de part et d'autre du buste, reliées par leurs fils de couture.
     Chaque sommet garde sa position dans le patron (couches « px », « pz », « piece ») pour le dépliage UV.
@@ -297,7 +297,8 @@ def make_garment(name, front_segments, back_segments, step=0.012, y_front=-0.16,
         pts, tris = triangulate_panel(outline, step)
         verts = []
         for p in pts:
-            v = bm.verts.new((p.x, y, p.y + z0))
+            # `shape` : écart initial entre les deux pièces selon x (sac : bords déjà réunis, milieu entrouvert)
+            v = bm.verts.new((p.x, y * shape(p.x, p.y) if shape else y, p.y + z0))
             v[lpx], v[lpz], v[lpiece] = p.x, p.y, piece
             verts.append(v)
         for key, indices in runs.items():
@@ -380,7 +381,15 @@ FABRICS = {
 }
 
 
-def add_cloth(obj, fabric='jersey', sewing_force=6.0, self_collision=False, quality=10):
+def pin_edges(obj, flag, name='pin'):
+    """Groupe de sommets des bords portant le drapeau donné : ils restent en place pendant la simulation."""
+    group = obj.vertex_groups.new(name=name)
+    layer = obj.data.attributes['edge'].data
+    group.add([i for i in range(len(obj.data.vertices)) if layer[i].value & flag], 1.0, 'REPLACE')
+    return name
+
+
+def add_cloth(obj, fabric='jersey', sewing_force=6.0, self_collision=False, quality=10, pin=None, pressure=0.0, slack=0.0):
     f = FABRICS[fabric]
     mod = obj.modifiers.new('Tissu', 'CLOTH')
     s = mod.settings
@@ -397,6 +406,16 @@ def add_cloth(obj, fabric='jersey', sewing_force=6.0, self_collision=False, qual
     s.air_damping = 1.5
     s.use_sewing_springs = True
     s.sewing_force_max = sewing_force
+    if pin:
+        s.vertex_group_mass = pin
+        s.pin_stiffness = 1.0
+    if slack:
+        # un peu d'aisance : le tissu, plus grand que son cadre, se détend en plis souples
+        s.shrink_min = -slack
+    if pressure:
+        # léger gonflant : le sac a du volume, comme s'il était garni
+        s.use_pressure = True
+        s.uniform_pressure_force = pressure
     c = mod.collision_settings
     c.use_collision = True
     c.collision_quality = 4
@@ -455,9 +474,21 @@ def weld_seams(obj):
             continue
         va.co = (va.co + vb.co) / 2
         target[vb] = va
+    welded = set(target.values())
     bmesh.ops.weld_verts(bm, targetmap=target)
     loose = [e for e in bm.edges if not e.link_faces]
     bmesh.ops.delete(bm, geom=loose, context='EDGES')
+    # la couture est lissée le long de son fil : plus de dents d'un point au suivant
+    welded = [v for v in welded if v.is_valid]
+    chain = set(welded)
+    for _ in range(4):
+        moved = {}
+        for v in welded:
+            near = [e.other_vert(v) for e in v.link_edges if e.other_vert(v) in chain]
+            if len(near) == 2:
+                moved[v] = v.co * 0.5 + (near[0].co + near[1].co) * 0.25
+        for v, co in moved.items():
+            v.co = co
     bm.normal_update()
     bm.to_mesh(obj.data)
     bm.free()

@@ -90,6 +90,20 @@ def weave(size, threads, seed):
     return h
 
 
+def net(size, cells):
+    """Filet de casquette trucker : trous ronds en quinconce (blanc = fil, noir = trou)."""
+    y, x = np.mgrid[0:size, 0:size] / size
+    u, v = x * cells, y * cells
+    best = np.full((size, size), 9.0)
+    for ox, oy in ((0.0, 0.0), (0.5, 0.5)):
+        du = (u - ox) - np.round(u - ox)
+        dv = (v - oy) - np.round(v - oy)
+        best = np.minimum(best, np.sqrt(du * du + dv * dv))
+    alpha = np.clip((best - 0.27) / 0.05, 0, 1)
+    return Image.fromarray((alpha * 255).astype(np.uint8), 'L')
+
+
+save(net(256, 8), 'filet-a', quality=90)
 save(to_normal(knit(512, 28, 34, 0.35, 0.22, 11), 3.2), 'jersey-n')
 save(to_normal(knit(512, 20, 22, 0.6, 0.45, 23), 3.6), 'molleton-n')
 save(to_normal(rib(512, 128, 12, 5), 5.0), 'cote-n')

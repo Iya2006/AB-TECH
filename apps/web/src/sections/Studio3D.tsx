@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, type MutableRefObject } from 'rea
 import * as THREE from 'three'
 import type { PrintSpec } from '../lib/mockup/engine'
 import { useApp } from '../lib/store'
-import { Garment3D, useGarmentAsset, uvToZone, type GarmentModel, type Place, type PrintSide } from '../three/real/Garment3D'
+import { Product3D, useProductAsset, uvToZone, type Model3D, type Place, type PrintSide } from '../three/real/Product3D'
 import { usePrintTexture } from '../three/real/print'
 
 /**
@@ -19,7 +19,7 @@ export interface Studio3DApi {
 }
 
 export interface Studio3DProps {
-  model: GarmentModel
+  model: Model3D
   color: string
   print: PrintSpec | null
   place: Place
@@ -79,10 +79,12 @@ interface Orbit {
 }
 
 function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, onReady }: Omit<Studio3DProps, 'active'>) {
-  const { meta, bounds } = useGarmentAsset(model)
+  const { meta, bounds } = useProductAsset(model)
   // monté une fois le modèle téléchargé : le cadre peut retirer son indicateur de chargement
   useEffect(() => onReady?.(), [model, onReady])
-  const texture = usePrintTexture(print, meta.zones[side].cm)
+  // un objet sans dos imprimable (gourde) : le visuel reste devant
+  const zone = meta.zones[side] ?? meta.zones.front
+  const texture = usePrintTexture(print, zone.cm)
   const layer = useMemo(() => (texture ? { texture, place } : null), [texture, place])
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
@@ -168,8 +170,8 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
 
   /** Position du pointeur dans la zone d'impression (0–1), ou null hors du tissu. */
   const inZone = (e: ThreeEvent<PointerEvent>) => {
-    if (!e.uv || !e.object.userData.garment) return null
-    return uvToZone(meta.zones[latest.current.side], e.uv)
+    if (!e.uv || !e.object.userData.printable) return null
+    return uvToZone(meta.zones[latest.current.side] ?? meta.zones.front, e.uv)
   }
   const onDown = (e: ThreeEvent<PointerEvent>) => {
     const p = inZone(e)
@@ -233,7 +235,7 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
     <>
       <StudioLights shadows={shadows} />
       <group ref={turntable}>
-      <Garment3D
+      <Product3D
         model={model}
         color={color}
         front={side === 'front' ? layer : null}

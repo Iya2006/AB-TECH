@@ -69,6 +69,61 @@ def long_sleeve(length, drop, neck=0.095, sleeve=0.58, chest=0.285, hem=0.255, b
     ]
 
 
+def tote_panel():
+    """Tote bag 38 × 42 cm : deux rectangles cousus sur les côtés et le fond, ouverts en haut."""
+    return [
+        ('bottom', [(0.0, 0.0), (0.19, 0.0)], True),
+        ('side', [(0.19, 0.0), (0.19, 0.42)], True),
+        ('hem', [(0.19, 0.42), (0.0, 0.42)], False),
+    ]
+
+
+def tote_handles(mat):
+    """Les deux anses : sangles plates cousues sous le bord, qui montent en arceau."""
+    import bmesh
+    from mathutils import Vector
+
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new('UVMap')
+    for sign in (-1, 1):
+        pts = []
+        n = 48
+        for i in range(n + 1):
+            q = i / n
+            # départ et arrivée sous le bord du sac (3,5 cm de couture), arceau de 27 cm
+            if q < 0.06:
+                x, z, lean = -0.085, 0.385 + 0.035 * q / 0.06, 0.0
+            elif q > 0.94:
+                x, z, lean = 0.085, 0.385 + 0.035 * (1 - q) / 0.06, 0.0
+            else:
+                a = (q - 0.06) / 0.88
+                x = -0.085 * math.cos(math.pi * a)
+                z = 0.42 + 0.27 * math.sin(math.pi * a) ** 0.85
+                lean = math.sin(math.pi * a)
+            y = sign * (0.028 * math.cos(math.pi * x / 0.38) + 0.004 + 0.035 * lean)
+            pts.append(Vector((x, y, z)))
+        rings = []
+        normal = Vector((0, sign, 0))
+        for i, p in enumerate(pts):
+            t = (pts[min(i + 1, n)] - pts[max(i - 1, 0)]).normalized()
+            side = normal.cross(t).normalized()
+            nn = t.cross(side).normalized()
+            rings.append([bm.verts.new(p + side * (0.0125 * a) + nn * (0.0013 * b)) for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+        for a, b in zip(rings, rings[1:]):
+            for k in range(4):
+                j = (k + 1) % 4
+                f = bm.faces.new((a[k], a[j], b[j], b[k]))
+                for loop in f.loops:
+                    loop[uv].uv = (0.0, -1.0)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new('Anses')
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = g.new_object('Anses', mesh)
+    obj.data.materials.append(mat)
+    return obj
+
+
 GARMENTS = {
     'tshirt': dict(
         length=0.72,
@@ -95,6 +150,24 @@ GARMENTS = {
         polo=dict(drop=0.082),
         stitches=[('hem', (0.020, 0.026))],
         zones=dict(front=(0.0, 0.185, 0.30, 0.40), back=(0.0, 0.24, 0.30, 0.40)),
+    ),
+    'tote': dict(
+        length=0.42,
+        front=tote_panel,
+        back=tote_panel,
+        fabric='toile',
+        step=0.011,
+        frames=90,
+        body=False,
+        gap=0.028,
+        pressure=float(os.environ.get('PRESSURE', 2)),
+        slack=0.035,
+        ribs=[],
+        hems=['hem'],
+        handles=True,
+        seams=('side', 'bottom'),
+        stitches=[('hem', (0.022, 0.028))],
+        zones=dict(front=(0.0, 0.07, 0.28, 0.30), back=(0.0, 0.07, 0.28, 0.30)),
     ),
     'pull': dict(
         length=0.68,
@@ -123,21 +196,34 @@ def build(name):
     if os.path.exists(cached) and not FORCE:
         bpy.ops.wm.open_mainfile(filepath=cached)
         obj = bpy.data.objects[name]
-        body = bpy.data.objects['Buste']
+        body = bpy.data.objects.get('Buste')
     else:
         g.reset_scene()
         body = g.make_body(arm_angle=float(os.environ.get('ARM', spec.get('arm_angle', 44))))
-        # le point d'épaule du patron est posé à la hauteur des épaules du buste, quelle que soit la longueur
-        obj = g.make_garment(name, spec['front'](), spec['back'](), step=float(os.environ.get('STEP', spec['step'])), z0=g.SHOULDER_Z - spec['length'])
-        obj.data.materials.append(g.fabric_material('tissu'))
-        g.add_cloth(obj, spec['fabric'], self_collision=os.environ.get('SELF', '1') == '1')
-        g.simulate(obj, spec['frames'], log=lambda f: print('  image', f, round(time.time() - t0, 1), 's', flush=True))
+        step = float(os.environ.get('STEP', spec['step']))
+        if spec.get('body', True):
+            # le point d'épaule du patron est posé à la hauteur des épaules du buste, quelle que soit la longueur
+            obj = g.make_garment(name, spec['front'](), spec['back'](), step=step, z0=g.SHOULDER_Z - spec['length'])
+            obj.data.materials.append(g.fabric_material('tissu'))
+            g.add_cloth(obj, spec['fabric'], self_collision=os.environ.get('SELF', '1') == '1')
+            g.simulate(obj, spec['frames'], log=lambda f: print('  image', f, round(time.time() - t0, 1), 's', flush=True))
+        else:
+            # sac : pas de buste ; le bord du haut reste en place (entrouvert), le reste se coud et prend du volume
+            bpy.data.objects.remove(body)
+            body = None
+            gap = spec['gap']
+            half = max(p[0] for _, pts, _ in spec['front']() for p in pts)
+            obj = g.make_garment(name, spec['front'](), spec['back'](), step=step, y_front=-gap, y_back=gap, shape=lambda x, z: math.cos(math.pi * x / (2 * half)))
+            obj.data.materials.append(g.fabric_material('tissu'))
+            g.add_cloth(obj, spec['fabric'], self_collision=False, pin=g.pin_edges(obj, g.EDGE['hem']), pressure=spec.get('pressure', 0.0), slack=float(os.environ.get('SLACK', spec.get('slack', 0.0))))
+            g.simulate(obj, spec['frames'], gravity_from=1, gravity_full=1, log=lambda f: print('  image', f, round(time.time() - t0, 1), 's', flush=True))
         g.freeze(obj)
         g.weld_seams(obj)
         bpy.ops.wm.save_as_mainfile(filepath=cached)
     log(name, 'simulation prête, %d sommets' % len(obj.data.vertices), t0)
-    body.hide_render = True
-    body.hide_viewport = True
+    if body:
+        body.hide_render = True
+        body.hide_viewport = True
 
     rib_mat = g.fabric_material('cote')
     extras = []
@@ -147,6 +233,8 @@ def build(name):
         extras.append(rib)
     for flag in spec.get('hems', []):
         g.add_hems(obj, g.EDGE[flag])
+    if spec.get('handles'):
+        extras.append(tote_handles(obj.data.materials[0]))
     late = []  # posés après le calcul des ombres (ils recouvrent le tissu de trop près)
     if spec.get('polo'):
         surface = g.Surface(obj)
@@ -162,7 +250,7 @@ def build(name):
 
     png = os.path.join(OUT, name + '-ao.png')
     g.bake_ao(obj, png)
-    g.finish_ao(obj, png, os.path.join(OUT, name + '-ao.webp'), stitches=spec.get('stitches', ()))
+    g.finish_ao(obj, png, os.path.join(OUT, name + '-ao.webp'), stitches=spec.get('stitches', ()), seams=spec.get('seams', ('side', 'shoulder')))
     os.remove(png)
     log(name, 'ombres des plis calculées', t0)
     for o in late:

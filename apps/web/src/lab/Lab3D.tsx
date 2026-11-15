@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { BRAND } from '../config/brand'
 import { drawPrint } from '../lib/print'
 import { StudioLights } from '../sections/Studio3D'
-import { Garment3D, type GarmentModel } from '../three/real/Garment3D'
+import { Product3D, type Model3D } from '../three/real/Product3D'
 
 /**
  * Banc d'essai des modèles 3D (développement uniquement) : /labo?m=tshirt&c=%232563eb&az=30&el=10&d=2.2&print=1
@@ -30,7 +30,7 @@ function Debug({ mode }: { mode: string }) {
     const id = setInterval(() => {
       scene.traverse((o) => {
         const mesh = o as THREE.Mesh
-        if (!mesh.isMesh || !mesh.userData.garment || mesh.userData.dbg) return
+        if (!mesh.isMesh || !mesh.userData.printable || mesh.userData.dbg) return
         const src = mesh.material as THREE.MeshPhysicalMaterial
         mesh.userData.dbg = true
         mesh.material = new THREE.ShaderMaterial({
@@ -53,7 +53,7 @@ function Debug({ mode }: { mode: string }) {
 
 export default function Lab3D() {
   const q = new URLSearchParams(location.search)
-  const model = (q.get('m') ?? 'tshirt') as GarmentModel
+  const model = (q.get('m') ?? 'tshirt') as Model3D
   const color = q.get('c') ?? '#f5f3ee'
   const az = (Number(q.get('az') ?? 25) * Math.PI) / 180
   const el = (Number(q.get('el') ?? 8) * Math.PI) / 180
@@ -68,7 +68,7 @@ export default function Lab3D() {
         <color attach="background" args={['#e9edf2']} />
         <StudioLights />
         <Suspense fallback={null}>
-          <Garment3D model={model} color={color} front={q.get('side') === 'back' ? null : print} back={q.get('side') === 'back' ? print : null} />
+          <Product3D model={model} color={color} front={q.get('side') === 'back' ? null : print} back={q.get('side') === 'back' ? print : null} />
         </Suspense>
         <ContactShadows position={[0, -0.12, 0]} scale={2.4} blur={2.6} far={1.2} opacity={0.32} />
         {q.get('dbg') && <Debug mode={q.get('dbg')!} />}
