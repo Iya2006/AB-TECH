@@ -161,7 +161,8 @@ GARMENTS = {
         body=False,
         gap=0.028,
         pressure=float(os.environ.get('PRESSURE', 2)),
-        slack=0.035,
+        slack=0.02,
+        relax=5,
         ribs=[],
         hems=['hem'],
         handles=True,
@@ -219,6 +220,8 @@ def build(name):
             g.simulate(obj, spec['frames'], gravity_from=1, gravity_full=1, log=lambda f: print('  image', f, round(time.time() - t0, 1), 's', flush=True))
         g.freeze(obj)
         g.weld_seams(obj)
+        if spec.get('relax'):
+            g.relax(obj, spec['relax'])
         bpy.ops.wm.save_as_mainfile(filepath=cached)
     log(name, 'simulation prête, %d sommets' % len(obj.data.vertices), t0)
     if body:

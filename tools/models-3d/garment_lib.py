@@ -461,6 +461,18 @@ def freeze(obj):
     obj.data.update()
 
 
+def relax(obj, iterations=4, factor=0.5):
+    """Détend le maillage (lissage doux) : efface les petits froissements serrés, garde les grands plis."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    for _ in range(iterations):
+        bmesh.ops.smooth_vert(bm, verts=bm.verts, factor=factor, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+
+
 def weld_seams(obj):
     """Ferme les coutures : chaque paire de points cousus devient un seul point (les UV restent par pièce)."""
     pairs = list(obj['seam_pairs'])

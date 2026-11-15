@@ -100,16 +100,23 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
   const latest = useRef({ place, side, onPlace, hasPrint: !!print })
   latest.current = { place, side, onPlace, hasPrint: !!print }
 
+  const height = bounds.max.y - bounds.min.y
+  // le produit tourne autour du centre de son encombrement (la visière d'une casquette le décale vers l'avant)
+  const centerX = (bounds.min.x + bounds.max.x) / 2
+  const centerZ = (bounds.min.z + bounds.max.z) / 2
+  /** Rayon horizontal : la largeur à cadrer, quel que soit l'angle du plateau. */
+  const radius = Math.hypot((bounds.max.x - bounds.min.x) / 2, (bounds.max.z - bounds.min.z) / 2)
+  const isObject = meta.kind === 'objet'
+  /** Les petits objets se regardent d'un peu plus haut, avec plus d'air autour. */
+  const restEl = isObject ? 0.2 : 0.06
+  /** Distance qui cadre tout le produit, quel que soit le format du cadre. */
+  const fit = () => Math.max((height * (isObject ? 1.08 : 0.66)) / TAN, (radius * (isObject ? 1.12 : 1.28)) / (TAN * (size.width / size.height)))
+
   // changer de côté ramène la vue de trois quarts (le vêtement fait un demi-tour)
   useEffect(() => {
     orbit.current.az = THREE_QUARTER
-    orbit.current.el = 0.06
-  }, [side, model])
-
-  const height = bounds.max.y - bounds.min.y
-  const halfWidth = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
-  /** Distance qui cadre tout le vêtement, quel que soit le format du cadre. */
-  const fit = () => Math.max((height * 0.66) / TAN, (halfWidth * 1.28) / (TAN * (size.width / size.height)))
+    orbit.current.el = restEl
+  }, [side, model, restEl])
 
   const setView = (az: number, el: number, dist: number, ty: number) => {
     if (turntable.current) turntable.current.rotation.y = -az
@@ -207,7 +214,7 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
           const shown = guides.map((g) => g.value.w)
           guides.forEach((g) => (g.value.w = 0))
           const base = latest.current.side === 'back' ? Math.PI : 0
-          setView(base + THREE_QUARTER, 0.06, fit(), height * 0.5)
+          setView(base + THREE_QUARTER, restEl, fit(), height * 0.5)
           scene.updateMatrixWorld()
           gl.render(scene, camera)
           const source = gl.domElement
@@ -236,6 +243,7 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
       <StudioLights shadows={shadows} />
       <group ref={turntable}>
       <Product3D
+        position={[-centerX, 0, -centerZ]}
         model={model}
         color={color}
         front={side === 'front' ? layer : null}
@@ -246,7 +254,12 @@ function Scene({ model, color, print, place, side, onPlace, zoom, guide, api, on
         onPointerMove={onMove}
         onPointerOut={() => (gl.domElement.style.cursor = 'grab')}
       />
-      <ContactShadows key={model} position={[0, -0.14, 0]} scale={2.6} blur={2.8} far={1.3} opacity={0.3} frames={1} resolution={512} />
+      {/* un vêtement flotte (présentation « invisible »), un objet est posé : son ombre le touche */}
+      {isObject ? (
+        <ContactShadows key={model} position={[0, -0.001, 0]} scale={radius * 6} blur={2.2} far={height * 1.2} opacity={0.42} frames={1} resolution={512} />
+      ) : (
+        <ContactShadows key={model} position={[0, -0.14, 0]} scale={2.6} blur={2.8} far={1.3} opacity={0.3} frames={1} resolution={512} />
+      )}
       </group>
     </>
   )
